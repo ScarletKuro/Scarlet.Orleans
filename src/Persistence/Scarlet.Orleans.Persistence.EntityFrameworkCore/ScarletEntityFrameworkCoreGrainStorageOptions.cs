@@ -8,8 +8,10 @@ namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
 /// Options for EF Core grain storage.
 /// </summary>
 /// <remarks>
-/// Retries of transient database errors come from the execution strategy configured on the context, for example
-/// <c>EnableRetryOnFailure</c>. Inserts and updates are safe to repeat; deletes run exactly once.
+/// Writes ignore any retrying execution strategy configured on the context, such as <c>EnableRetryOnFailure</c>: after
+/// a connection failure a write's outcome is unknown, and repeating it could report a committed write as a conflict.
+/// A write is repeated only when the server reports that the attempt was not applied, such as a deadlock; other
+/// failures surface to Orleans. Reads use the context's strategy.
 /// </remarks>
 public sealed class ScarletEntityFrameworkCoreGrainStorageOptions : IStorageProviderSerializerOptions
 {
@@ -31,8 +33,9 @@ public sealed class ScarletEntityFrameworkCoreGrainStorageOptions : IStorageProv
     /// <remarks>
     /// When set, this rule alone decides. A duplicate key it does not recognise surfaces as the driver's error, rather than
     /// as <see cref="global::Orleans.Storage.InconsistentStateException"/>. For a driver that is not recognised and this
-    /// rule is not set, a failed insert is reported as a duplicate key if a row exists under the key afterwards, which
-    /// misjudges a conflicting row deleted in between.
+    /// rule is not set, the provider checks for a row under the key after the failure: if one exists, the insert could
+    /// not have succeeded and is reported as a conflict; if none does, the driver's error surfaces. A conflicting row
+    /// deleted in between therefore surfaces as the driver's error rather than as a conflict, which this rule avoids.
     /// </remarks>
     public Func<DbException, bool>? IsDuplicateKeyError { get; set; }
 

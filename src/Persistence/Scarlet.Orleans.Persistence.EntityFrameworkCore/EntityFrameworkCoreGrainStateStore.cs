@@ -132,8 +132,10 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(
                 break;
         }
 
-        // A cause that cannot be recognised. A row existing under the key now is the best remaining evidence; if it was
-        // deleted in between, the original failure surfaces instead of a conflict, which is still safe.
+        // A cause that cannot be recognised. An insert expects no row, so a row under the key now means it could not
+        // have succeeded: a conflict, or this insert committed, which the storage settles from the ETag. With no row,
+        // the original failure surfaces, as it would without this check; that includes a conflicting row deleted in
+        // between, so the check only ever turns errors into correct answers.
         if (await ExistsAsync(key, cancellationToken).ConfigureAwait(false))
         {
             return false;
