@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Scarlet.Orleans.Relational;
 
 namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
@@ -16,6 +17,11 @@ namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
 /// Every operation uses its own short-lived context, because Orleans calls storage concurrently and a
 /// <see cref="DbContext"/> is not thread-safe. Updates and deletes use <c>ExecuteUpdate</c> and <c>ExecuteDelete</c>,
 /// so the change tracker never turns a conditional write into a read followed by a write.
+/// </para>
+/// <para>
+/// Writes run in a <see cref="SingleAttemptExecutionStrategy"/>, so a retrying execution strategy configured on the
+/// application's context never repeats them. A repeat after a commit whose acknowledgement was lost would match no row
+/// and turn a successful write into a conflict. Reads keep the application's strategy, since repeating them is safe.
 /// </para>
 /// </remarks>
 internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFactory<TContext> contextFactory, SchemaMode schemaMode, TimeProvider timeProvider)
@@ -82,7 +88,9 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
 
             try
             {
-                return await context.Database.ExecuteSqlRawAsync(GrainStateSql.Insert(engine), parameters, ct).ConfigureAwait(false) == 1;
+                return await new SingleAttemptExecutionStrategy(context)
+                    .ExecuteAsync(c => context.Database.ExecuteSqlRawAsync(GrainStateSql.Insert(engine), parameters, c), ct)
+                    .ConfigureAwait(false) == 1;
             }
             catch (DbException exception) when (DbErrors.IsDuplicateKey(engine, exception))
             {
@@ -95,12 +103,14 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
         {
             await using var context = await contextFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
             var modifiedOnUtc = modifiedOn.UtcDateTime;
-            var updated = await Match(context, key, expectedETag)
-                .ExecuteUpdateAsync(
-                    setters => setters
-                        .SetProperty(r => r.Payload, payload)
-                        .SetProperty(r => r.ETag, etag)
-                        .SetProperty(r => r.ModifiedOn, modifiedOnUtc),
+            var updated = await new SingleAttemptExecutionStrategy(context)
+                .ExecuteAsync(
+                    c => Match(context, key, expectedETag).ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(r => r.Payload, payload)
+                            .SetProperty(r => r.ETag, etag)
+                            .SetProperty(r => r.ModifiedOn, modifiedOnUtc),
+                        c),
                     ct)
                 .ConfigureAwait(false);
             return updated == 1;
@@ -110,7 +120,9 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
         TransientRetry.ExecuteAsync(engine, timeProvider, async ct =>
         {
             await using var context = await contextFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-            return await Match(context, key, expectedETag).ExecuteDeleteAsync(ct).ConfigureAwait(false) == 1;
+            return await new SingleAttemptExecutionStrategy(context)
+                .ExecuteAsync(c => Match(context, key, expectedETag).ExecuteDeleteAsync(c), ct)
+                .ConfigureAwait(false) == 1;
         }, cancellationToken);
 
     private static IQueryable<GrainStateRecord> Match(TContext context, GrainStateKey key, byte[] expectedETag)
@@ -118,5 +130,14 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
         var hash = key.Hash;
         var identity = key.Identity;
         return context.Set<GrainStateRecord>().Where(r => r.KeyHash == hash && r.GrainIdentity == identity && r.ETag == expectedETag);
+    }
+
+    /// <summary>
+    /// Runs an operation exactly once. EF Core does not retry operations nested in a running execution strategy, so the
+    /// strategy configured on the context is suspended for the operation.
+    /// </summary>
+    private sealed class SingleAttemptExecutionStrategy(DbContext context) : ExecutionStrategy(context, maxRetryCount: 0, maxRetryDelay: TimeSpan.Zero)
+    {
+        protected override bool ShouldRetryOn(Exception exception) => false;
     }
 }

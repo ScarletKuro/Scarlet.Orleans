@@ -39,11 +39,17 @@ internal static class GrainStateSql
     {
         command.AddParameter("key_hash", key.Hash, DbType.Binary);
         command.AddParameter("grain_identity", key.Identity, DbType.Binary);
-        command.AddParameter("service_id", key.ServiceId, DbType.String);
-        command.AddParameter("state_name", key.StateName, DbType.String);
-        command.AddParameter("grain_id", key.GrainId.ToString(), DbType.String);
+        command.AddParameter("service_id", Display(key.ServiceId), DbType.String);
+        command.AddParameter("state_name", Display(key.StateName), DbType.String);
+        command.AddParameter("grain_id", Display(key.GrainId.ToString()), DbType.String);
         command.AddParameter("payload", payload, DbType.Binary);
         command.AddParameter("etag", etag, DbType.Binary);
         command.AddParameter("modified_on", modifiedOn, DbType.DateTimeOffset);
     }
+
+    /// <summary>
+    /// Makes an identity part storable as display text. PostgreSQL rejects NUL in text values, and identities may hold
+    /// any byte, so NUL is written as <c>\0</c>. The text is never compared; identity lives in <c>grain_identity</c>.
+    /// </summary>
+    private static string Display(string value) => value.Replace("\0", "\\0", StringComparison.Ordinal);
 }

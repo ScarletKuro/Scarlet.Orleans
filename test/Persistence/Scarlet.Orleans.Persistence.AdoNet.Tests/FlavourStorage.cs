@@ -7,16 +7,13 @@ namespace Scarlet.Orleans.Persistence.Tests;
 internal static class FlavourStorage
 {
     public static RelationalGrainStorage Create(TestDatabase database, string serviceId, bool deleteStateOnClear, TestSchemaMode schemaMode) =>
-        new(
-            "test",
-            serviceId,
-            new AdoNetGrainStateStore(database.DataSource, EngineOption(database), (SchemaMode)schemaMode, TimeProvider.System),
-            new JsonTestSerializer(),
-            new TestActivatorProvider(),
-            deleteStateOnClear,
-            initStage: 0,
-            TimeProvider.System,
-            NullLogger<RelationalGrainStorage>.Instance);
+        Create(CreateStore(database, schemaMode), serviceId, deleteStateOnClear);
+
+    public static RelationalGrainStorage Create(IGrainStateStore store, string serviceId, bool deleteStateOnClear) =>
+        new("test", serviceId, store, new JsonTestSerializer(), new TestActivatorProvider(), deleteStateOnClear, initStage: 0, TimeProvider.System, NullLogger<RelationalGrainStorage>.Instance);
+
+    public static IGrainStateStore CreateStore(TestDatabase database, TestSchemaMode schemaMode) =>
+        new AdoNetGrainStateStore(database.DataSource, EngineOption(database), (SchemaMode)schemaMode, TimeProvider.System);
 
     public static void AddStorage(ISiloBuilder silo, string name, TestDatabase database) =>
         silo.AddScarletAdoNetGrainStorage(name, options =>

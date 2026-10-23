@@ -1,4 +1,5 @@
 using System.Data;
+using System.Transactions;
 using Orleans;
 using Orleans.Runtime;
 using Orleans.Storage;
@@ -324,6 +325,107 @@ public abstract class GrainStorageConformanceTests(DatabaseFixture fixture)
         await Assert.ThrowsAsync<GrainStateKeyCollisionException>(() => storage.ClearStateAsync(StateName, grainId, NewState(1)));
 
         Assert.Equal(ForeignPayload, await ReadPayloadAsync(key.Hash));
+    }
+
+    [Fact]
+    public async Task Write_InsideAnAmbientTransactionThatRollsBack_StaysCommitted()
+    {
+        var storage = await CreateInitializedStorageAsync();
+        var grainId = NewGrainId();
+        var state = NewState(1);
+
+        using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+        {
+            await storage.WriteStateAsync(StateName, grainId, state);
+        }
+
+        var read = await ReadAsync(storage, grainId);
+        Assert.True(read.RecordExists);
+        Assert.Equal(state.ETag, read.ETag);
+    }
+
+    [Fact]
+    public async Task Identities_WithNulCharacters_RoundTrip()
+    {
+        var storage = await CreateInitializedStorageAsync();
+        var grainId = GrainId.Create(new GrainType([0x61, 0x00, 0x62]), new IdSpan([0x00, 0x01]));
+        const string stateName = "state\0name";
+
+        await storage.WriteStateAsync(stateName, grainId, NewState(4));
+
+        Assert.Equal(4, (await ReadAsync(storage, grainId, stateName)).State!.Value);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Write_WhenARepeatFindsItsOwnCommittedWrite_Succeeds(bool insert)
+    {
+        await CreateInitializedStorageAsync();
+        var store = new LostAcknowledgementStore(FlavourStorage.CreateStore(Fixture.Database, TestSchemaMode.Validate));
+        var storage = FlavourStorage.Create(store, serviceId, deleteStateOnClear: false);
+        await storage.InitializeAsync(TestContext.Current.CancellationToken);
+        var grainId = NewGrainId();
+        var state = NewState(1);
+        if (!insert)
+        {
+            await storage.WriteStateAsync(StateName, grainId, state);
+        }
+
+        store.LoseNextAcknowledgement = true;
+        state.State!.Value = 2;
+        await storage.WriteStateAsync(StateName, grainId, state);
+
+        var read = await ReadAsync(storage, grainId);
+        Assert.Equal(state.ETag, read.ETag);
+        Assert.Equal(2, read.State!.Value);
+    }
+
+    [Fact]
+    public async Task Clear_WhenARepeatFindsItsOwnCommittedClear_Succeeds()
+    {
+        await CreateInitializedStorageAsync();
+        var store = new LostAcknowledgementStore(FlavourStorage.CreateStore(Fixture.Database, TestSchemaMode.Validate));
+        var storage = FlavourStorage.Create(store, serviceId, deleteStateOnClear: false);
+        await storage.InitializeAsync(TestContext.Current.CancellationToken);
+        var grainId = NewGrainId();
+        var state = NewState(1);
+        await storage.WriteStateAsync(StateName, grainId, state);
+
+        store.LoseNextAcknowledgement = true;
+        await storage.ClearStateAsync(StateName, grainId, state);
+
+        var read = await ReadAsync(storage, grainId);
+        Assert.False(read.RecordExists);
+        Assert.Equal(state.ETag, read.ETag);
+    }
+
+    /// <summary>
+    /// Commits a write, then reports that it matched no row, as a repeat of a committed statement does.
+    /// </summary>
+    private sealed class LostAcknowledgementStore(IGrainStateStore inner) : IGrainStateStore
+    {
+        public bool LoseNextAcknowledgement { get; set; }
+
+        public Task InitializeAsync(CancellationToken cancellationToken) => inner.InitializeAsync(cancellationToken);
+
+        public Task<StoredGrainState?> ReadAsync(GrainStateKey key, CancellationToken cancellationToken) => inner.ReadAsync(key, cancellationToken);
+
+        public async Task<bool> TryInsertAsync(GrainStateKey key, byte[] payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken) =>
+            Acknowledge(await inner.TryInsertAsync(key, payload, etag, modifiedOn, cancellationToken));
+
+        public async Task<bool> TryUpdateAsync(GrainStateKey key, byte[] expectedETag, byte[]? payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken) =>
+            Acknowledge(await inner.TryUpdateAsync(key, expectedETag, payload, etag, modifiedOn, cancellationToken));
+
+        public Task<bool> TryDeleteAsync(GrainStateKey key, byte[] expectedETag, CancellationToken cancellationToken) => inner.TryDeleteAsync(key, expectedETag, cancellationToken);
+
+        private bool Acknowledge(bool written)
+        {
+            Assert.True(written);
+            var acknowledged = !LoseNextAcknowledgement;
+            LoseNextAcknowledgement = false;
+            return acknowledged;
+        }
     }
 
     private static readonly byte[] ForeignPayload = [1, 2, 3];
