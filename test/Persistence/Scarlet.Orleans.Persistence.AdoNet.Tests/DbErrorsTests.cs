@@ -17,47 +17,46 @@ namespace Scarlet.Orleans.Persistence.Tests;
 /// </remarks>
 public sealed class DbErrorsTests
 {
-    public static TheoryData<string, string, int, bool> DuplicateKeys => new()
+    public static TheoryData<string, int, bool> DuplicateKeys => new()
     {
-        { "PostgreSql", "Npgsql", 23505, true },
-        { "PostgreSql", "Npgsql", 23503, false },
-        { "MySql", "MySqlConnector", 1062, true },
-        { "MySql", "MySqlConnector", 1452, false },
-        { "MySql", "MySql.Data", 1062, true },
-        { "MySql", "MySql.Data", 1452, false },
-        { "MariaDb", "MySqlConnector", 1062, true },
-        { "SqlServer", "SqlClient", 2627, true },
-        { "SqlServer", "SqlClient", 2601, true },
-        { "SqlServer", "SqlClient", 547, false },
-        { "Sqlite", "Sqlite", 19, false },
+        { "Npgsql", 23505, true },
+        { "Npgsql", 23503, false },
+        { "MySqlConnector", 1062, true },
+        { "MySqlConnector", 1452, false },
+        { "MySql.Data", 1062, true },
+        { "MySql.Data", 1452, false },
+        { "SqlClient", 2627, true },
+        { "SqlClient", 2601, true },
+        { "SqlClient", 547, false },
+        { "Sqlite", 19, false },
     };
 
-    public static TheoryData<string, string, int, bool> TransientErrors => new()
+    public static TheoryData<string, int, bool> TransientErrors => new()
     {
-        { "PostgreSql", "Npgsql", 40001, true },
-        { "PostgreSql", "Npgsql", 40002, false },
-        { "MySql", "MySqlConnector", 1213, true },
-        { "MySql", "MySqlConnector", 1205, false },
-        { "MySql", "MySql.Data", 1213, true },
-        { "MySql", "MySql.Data", 1205, false },
-        { "SqlServer", "SqlClient", 1205, true },
-        { "SqlServer", "SqlClient", 1222, false },
-        { "Sqlite", "Sqlite", 5, false },
+        { "Npgsql", 40001, true },
+        { "Npgsql", 40002, false },
+        { "MySqlConnector", 1213, true },
+        { "MySqlConnector", 1205, false },
+        { "MySql.Data", 1213, true },
+        { "MySql.Data", 1205, false },
+        { "SqlClient", 1205, true },
+        { "SqlClient", 1222, false },
+        { "Sqlite", 5, false },
     };
 
     [Theory]
     [MemberData(nameof(DuplicateKeys))]
-    public void IsDuplicateKey_ReadsWhatTheDriverReports(string engine, string driver, int error, bool expected) =>
-        Assert.Equal(expected, DbErrors.IsDuplicateKey(RelationalEngines.Parse(engine), ServerError(driver, error)));
+    public void IsDuplicateKey_ReadsWhatTheDriverReports(string driver, int error, bool expected) =>
+        Assert.Equal(expected, DbErrors.IsDuplicateKey(ServerError(driver, error)));
 
     [Theory]
     [MemberData(nameof(TransientErrors))]
-    public void IsTransient_ReadsWhatTheDriverReports(string engine, string driver, int error, bool expected) =>
-        Assert.Equal(expected, DbErrors.IsTransient(RelationalEngines.Parse(engine), ServerError(driver, error)));
+    public void IsTransient_ReadsWhatTheDriverReports(string driver, int error, bool expected) =>
+        Assert.Equal(expected, DbErrors.IsTransient(ServerError(driver, error)));
 
     [Fact]
     public void PostgreSqlDeadlock_IsTransient() =>
-        Assert.True(DbErrors.IsTransient(RelationalEngine.PostgreSql, new PostgresException("deadlock detected", "ERROR", "ERROR", "40P01")));
+        Assert.True(DbErrors.IsTransient(new PostgresException("deadlock detected", "ERROR", "ERROR", "40P01")));
 
     /// <param name="error">The SQLSTATE for PostgreSQL, otherwise the engine's error number.</param>
     private static DbException ServerError(string driver, int error) => driver switch

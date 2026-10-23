@@ -52,7 +52,7 @@ public abstract class SchemaMigratorTests(DatabaseFixture fixture)
     [Fact]
     public async Task Apply_WhenManagedByEntityFrameworkMigrations_Refuses()
     {
-        await ExecuteAsync(SchemaLedger.CreateTable(Engine));
+        await ExecuteAsync(SchemaLedgerSql.CreateTable(Engine));
         await InsertLedgerRowAsync(1, SchemaLedger.EntityFrameworkSource);
 
         var exception = await Assert.ThrowsAsync<SchemaVersionException>(() => EnsureAsync(apply: true, minimumVersion: 2, CreateTable(1), CreateTable(2)));
@@ -64,7 +64,7 @@ public abstract class SchemaMigratorTests(DatabaseFixture fixture)
     [Fact]
     public async Task Validate_EntityFrameworkRows_SkipTheChecksum()
     {
-        await ExecuteAsync(SchemaLedger.CreateTable(Engine));
+        await ExecuteAsync(SchemaLedgerSql.CreateTable(Engine));
         await InsertLedgerRowAsync(1, SchemaLedger.EntityFrameworkSource);
 
         await EnsureAsync(apply: false, minimumVersion: 1, CreateTable(1));
@@ -73,7 +73,7 @@ public abstract class SchemaMigratorTests(DatabaseFixture fixture)
     [Fact]
     public async Task Apply_WhenAScriptFails_RecordsNothing()
     {
-        await ExecuteAsync(SchemaLedger.CreateTable(Engine));
+        await ExecuteAsync(SchemaLedgerSql.CreateTable(Engine));
         var failing = Script(1, $"CREATE TABLE m1_{suffix} (id int); SELECT * FROM missing_{suffix}");
 
         await Assert.ThrowsAnyAsync<Exception>(() => EnsureAsync(apply: true, minimumVersion: 1, failing));

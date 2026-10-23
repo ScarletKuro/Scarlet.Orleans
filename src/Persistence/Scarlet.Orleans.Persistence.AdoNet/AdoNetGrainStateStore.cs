@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using Scarlet.Orleans.Relational;
+using Scarlet.Orleans.Relational.Schema;
 
 namespace Scarlet.Orleans.Persistence.AdoNet;
 
@@ -21,12 +22,12 @@ internal sealed class AdoNetGrainStateStore(DbDataSource dataSource, string? eng
         engine = engineName is null ? RelationalEngines.FromConnection(connection) : RelationalEngines.Parse(engineName);
         if (schemaMode != SchemaMode.None)
         {
-            await PersistenceSchema.CreateMigrator(engine).EnsureAsync(connection, apply: schemaMode == SchemaMode.Apply, cancellationToken).ConfigureAwait(false);
+            await CreateMigrator(engine).EnsureAsync(connection, apply: schemaMode == SchemaMode.Apply, cancellationToken).ConfigureAwait(false);
         }
     }
 
     public Task<StoredGrainState?> ReadAsync(GrainStateKey key, CancellationToken cancellationToken) =>
-        TransientRetry.ExecuteAsync(engine, timeProvider, async ct =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
         {
             await using var command = dataSource.CreateCommand(GrainStateSql.Select);
             command.AddParameter("key_hash", key.Hash, DbType.Binary);
@@ -43,7 +44,7 @@ internal sealed class AdoNetGrainStateStore(DbDataSource dataSource, string? eng
         }, cancellationToken);
 
     public Task<bool> TryInsertAsync(GrainStateKey key, byte[] payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken) =>
-        TransientRetry.ExecuteAsync(engine, timeProvider, async ct =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
         {
             await using var command = dataSource.CreateCommand(GrainStateSql.Insert(engine));
             GrainStateSql.AddInsertParameters(command, key, payload, etag, modifiedOn);
@@ -51,14 +52,14 @@ internal sealed class AdoNetGrainStateStore(DbDataSource dataSource, string? eng
             {
                 return await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false) == 1;
             }
-            catch (DbException exception) when (DbErrors.IsDuplicateKey(engine, exception))
+            catch (DbException exception) when (DbErrors.IsDuplicateKey(exception))
             {
                 return false;
             }
         }, cancellationToken);
 
     public Task<bool> TryUpdateAsync(GrainStateKey key, byte[] expectedETag, byte[]? payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken) =>
-        TransientRetry.ExecuteAsync(engine, timeProvider, async ct =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
         {
             await using var command = dataSource.CreateCommand(GrainStateSql.Update);
             command.AddParameter("payload", payload, DbType.Binary);
@@ -69,12 +70,15 @@ internal sealed class AdoNetGrainStateStore(DbDataSource dataSource, string? eng
         }, cancellationToken);
 
     public Task<bool> TryDeleteAsync(GrainStateKey key, byte[] expectedETag, CancellationToken cancellationToken) =>
-        TransientRetry.ExecuteAsync(engine, timeProvider, async ct =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
         {
             await using var command = dataSource.CreateCommand(GrainStateSql.Delete);
             AddMatch(command, key, expectedETag);
             return await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false) == 1;
         }, cancellationToken);
+
+    private static SchemaMigrator CreateMigrator(RelationalEngine engine) =>
+        new(PersistenceSchema.Component, engine, SchemaScript.Load(typeof(AdoNetGrainStateStore).Assembly, engine), PersistenceSchema.MinimumVersion);
 
     private static void AddMatch(DbCommand command, GrainStateKey key, byte[] expectedETag)
     {

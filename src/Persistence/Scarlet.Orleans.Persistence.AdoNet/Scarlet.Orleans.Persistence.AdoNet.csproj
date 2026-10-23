@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="$(SharedSourceRoot)AdoNet/**/*.cs" LinkBase="Shared/AdoNet" />
     <EmbeddedResource Include="..\Shared\Schema\*.sql" LogicalName="%(Filename)%(Extension)" />
     <None Include="..\Shared\Schema\*.sql" Pack="true" PackagePath="schema/" Visible="false" />
   </ItemGroup>

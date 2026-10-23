@@ -16,7 +16,6 @@ internal static class TransientRetry
     private static readonly TimeSpan BaseDelay = TimeSpan.FromMilliseconds(20);
 
     public static async Task<T> ExecuteAsync<T>(
-        RelationalEngine engine,
         TimeProvider timeProvider,
         Func<CancellationToken, Task<T>> operation,
         CancellationToken cancellationToken)
@@ -27,7 +26,7 @@ internal static class TransientRetry
             {
                 return await operation(cancellationToken).ConfigureAwait(false);
             }
-            catch (DbException exception) when (attempt < MaxAttempts && DbErrors.IsTransient(engine, exception))
+            catch (Exception exception) when (attempt < MaxAttempts && ServerError(exception) is { } error && DbErrors.IsTransient(error))
             {
                 // Full jitter keeps concurrent losers of the same deadlock from colliding again in lockstep.
                 var delay = BaseDelay * (1 << attempt) * Random.Shared.NextDouble();
@@ -35,4 +34,9 @@ internal static class TransientRetry
             }
         }
     }
+
+    /// <summary>
+    /// The server error behind <paramref name="exception"/>, which EF Core wraps in <c>DbUpdateException</c>.
+    /// </summary>
+    private static DbException? ServerError(Exception exception) => exception as DbException ?? exception.InnerException as DbException;
 }

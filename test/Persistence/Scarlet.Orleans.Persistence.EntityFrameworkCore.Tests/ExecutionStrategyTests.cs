@@ -5,20 +5,21 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Orleans;
 using Orleans.Runtime;
+using Orleans.Storage;
 using Scarlet.Orleans.Persistence.EntityFrameworkCore;
+using Scarlet.Orleans.Relational;
 
 namespace Scarlet.Orleans.Persistence.Tests;
 
 /// <summary>
-/// The application's retrying execution strategy, repeating a write whose first attempt committed but whose
-/// acknowledgement was lost.
+/// Writes under the application's retrying execution strategy, when a write's acknowledgement is lost after it committed.
 /// </summary>
 public sealed class ExecutionStrategyTests(SqliteDatabaseFixture fixture) : IClassFixture<SqliteDatabaseFixture>
 {
     private const string StateName = "state";
 
     [Fact]
-    public async Task Update_RepeatedAfterALostAcknowledgement_Succeeds()
+    public async Task Update_WithALostAcknowledgement_RunsOnceAndReportsTheFailure()
     {
         var (interceptor, storage) = await ArrangeAsync(deleteStateOnClear: false);
         var grainId = NewGrainId();
@@ -26,37 +27,12 @@ public sealed class ExecutionStrategyTests(SqliteDatabaseFixture fixture) : ICla
         await storage.WriteStateAsync(StateName, grainId, state);
 
         interceptor.Arm("UPDATE");
-        state.State.Value = 2;
-        await storage.WriteStateAsync(StateName, grainId, state);
+        var attempted = new GrainState<TestState> { State = new TestState { Value = 2 }, ETag = state.ETag };
+        var exception = await Record.ExceptionAsync(() => storage.WriteStateAsync(StateName, grainId, attempted));
 
-        Assert.Equal(2, interceptor.Executions);
-        await AssertStoredAsync(storage, grainId, state);
-    }
-
-    /// <summary>
-    /// EF Core reports the failed <c>SaveChanges</c> rather than repeating the insert; the store finds the committed row
-    /// and the storage settles the write from its ETag, so the outcome is the same as for a repeat.
-    /// </summary>
-    [Fact]
-    public async Task Insert_AfterALostAcknowledgement_Succeeds()
-    {
-        var (interceptor, storage) = await ArrangeAsync(deleteStateOnClear: false);
-        var grainId = NewGrainId();
-        var state = new GrainState<TestState> { State = new TestState { Value = 2 } };
-
-        interceptor.Arm("INSERT");
-        await storage.WriteStateAsync(StateName, grainId, state);
-
-        Assert.True(interceptor.Executions >= 1);
-        await AssertStoredAsync(storage, grainId, state);
-    }
-
-    private static async Task AssertStoredAsync(RelationalGrainStorage storage, GrainId grainId, GrainState<TestState> written)
-    {
-        var read = new GrainState<TestState>();
-        await storage.ReadStateAsync(StateName, grainId, read);
-        Assert.Equal(written.ETag, read.ETag);
-        Assert.Equal(written.State!.Value, read.State!.Value);
+        Assert.IsType<LostAcknowledgementException>(exception);
+        Assert.Equal(1, interceptor.Executions);
+        Assert.Equal(2, (await ReadAsync(storage, grainId)).State!.Value);
     }
 
     [Fact]
@@ -72,12 +48,61 @@ public sealed class ExecutionStrategyTests(SqliteDatabaseFixture fixture) : ICla
 
         Assert.IsType<LostAcknowledgementException>(exception);
         Assert.Equal(1, interceptor.Executions);
-        var read = new GrainState<TestState>();
-        await storage.ReadStateAsync(StateName, grainId, read);
-        Assert.False(read.RecordExists);
+        Assert.False((await ReadAsync(storage, grainId)).RecordExists);
+    }
+
+    /// <summary>
+    /// The lost acknowledgement comes from no known driver, so the insert falls back to checking for the row, which
+    /// holds the ETag this write generated.
+    /// </summary>
+    [Fact]
+    public async Task Insert_WithALostAcknowledgement_RunsOnce()
+    {
+        var (interceptor, storage) = await ArrangeAsync(deleteStateOnClear: false);
+        var grainId = NewGrainId();
+        var state = new GrainState<TestState> { State = new TestState { Value = 2 } };
+
+        interceptor.Arm("INSERT");
+        await storage.WriteStateAsync(StateName, grainId, state);
+
+        Assert.Equal(1, interceptor.Executions);
+        var read = await ReadAsync(storage, grainId);
+        Assert.Equal(state.ETag, read.ETag);
+        Assert.Equal(2, read.State!.Value);
+    }
+
+    [Fact]
+    public async Task DuplicateInsert_WhenTheExistingRowIsDeletedBeforeClassification_ReportsAConflict()
+    {
+        await FlavourStorage.EnsureSchemaAsync(fixture.Database, TestContext.Current.CancellationToken);
+        var serviceId = $"service-{Guid.NewGuid():N}";
+        var grainId = NewGrainId();
+        var plain = FlavourStorage.Create(fixture.Database, serviceId, deleteStateOnClear: false, TestSchemaMode.Validate);
+        await plain.InitializeAsync(TestContext.Current.CancellationToken);
+        await plain.WriteStateAsync(StateName, grainId, new GrainState<TestState> { State = new TestState { Value = 1 } });
+        var key = GrainStateKey.Create(serviceId, StateName, grainId);
+        var deleteOnFailure = new DeleteOnFailedInsertInterceptor(fixture.Database, key.Hash);
+        var options = new DbContextOptionsBuilder<TestDbContext>().UseSqlite(fixture.Database.ConnectionString).AddInterceptors(deleteOnFailure).Options;
+        var storage = FlavourStorage.Create(
+            new EntityFrameworkCoreGrainStateStore<TestDbContext>(new PooledDbContextFactory<TestDbContext>(options), SchemaMode.Validate, TimeProvider.System),
+            serviceId,
+            deleteStateOnClear: false);
+        await storage.InitializeAsync(TestContext.Current.CancellationToken);
+
+        var exception = await Record.ExceptionAsync(() => storage.WriteStateAsync(StateName, grainId, new GrainState<TestState> { State = new TestState { Value = 2 } }));
+
+        Assert.True(deleteOnFailure.Deleted);
+        Assert.IsType<InconsistentStateException>(exception);
     }
 
     private static GrainId NewGrainId() => GrainId.Create("test-grain", Guid.NewGuid().ToString("N"));
+
+    private static async Task<GrainState<TestState>> ReadAsync(RelationalGrainStorage storage, GrainId grainId)
+    {
+        var read = new GrainState<TestState>();
+        await storage.ReadStateAsync(StateName, grainId, read);
+        return read;
+    }
 
     private async Task<(LoseAcknowledgementInterceptor Interceptor, RelationalGrainStorage Storage)> ArrangeAsync(bool deleteStateOnClear)
     {
@@ -87,7 +112,7 @@ public sealed class ExecutionStrategyTests(SqliteDatabaseFixture fixture) : ICla
             .UseSqlite(fixture.Database.ConnectionString, sqlite => sqlite.ExecutionStrategy(dependencies => new RetryingStrategy(dependencies)))
             .AddInterceptors(interceptor)
             .Options;
-        var store = new EntityFrameworkCoreGrainStateStore<TestDbContext>(new PooledDbContextFactory<TestDbContext>(options), SchemaMode.Validate);
+        var store = new EntityFrameworkCoreGrainStateStore<TestDbContext>(new PooledDbContextFactory<TestDbContext>(options), SchemaMode.Validate, TimeProvider.System);
         var storage = FlavourStorage.Create(store, $"service-{Guid.NewGuid():N}", deleteStateOnClear);
         await storage.InitializeAsync(TestContext.Current.CancellationToken);
         return (interceptor, storage);
@@ -148,6 +173,26 @@ public sealed class ExecutionStrategyTests(SqliteDatabaseFixture fixture) : ICla
                     throw new LostAcknowledgementException();
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Deletes the existing row as soon as an insert fails, before the store can classify the failure.
+    /// </summary>
+    private sealed class DeleteOnFailedInsertInterceptor(TestDatabase database, byte[] keyHash) : DbCommandInterceptor
+    {
+        public bool Deleted { get; private set; }
+
+        public override async Task CommandFailedAsync(DbCommand command, CommandErrorEventData eventData, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.TrimStart().StartsWith("INSERT", StringComparison.OrdinalIgnoreCase))
+            {
+                await using var delete = database.DataSource.CreateCommand($"DELETE FROM {PersistenceSchema.TableName} WHERE key_hash = @key_hash");
+                delete.AddParameter("key_hash", keyHash, System.Data.DbType.Binary);
+                Deleted = await delete.ExecuteNonQueryAsync(cancellationToken) == 1;
+            }
+
+            await base.CommandFailedAsync(command, eventData, cancellationToken);
         }
     }
 }

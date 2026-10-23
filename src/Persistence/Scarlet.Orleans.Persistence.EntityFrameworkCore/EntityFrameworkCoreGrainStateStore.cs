@@ -1,12 +1,13 @@
 using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Scarlet.Orleans.Relational;
 using Scarlet.Orleans.Relational.Schema;
 
 namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
 
 /// <summary>
-/// Grain state operations through EF Core APIs only, so any relational EF Core provider works and none is special-cased.
+/// Grain state operations through EF Core APIs, with no provider special-cased.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,13 +17,14 @@ namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
 /// turns a conditional write into a read followed by a write.
 /// </para>
 /// <para>
-/// Transient errors are retried by the execution strategy configured on the context, if any. A repeated insert or update
-/// whose first attempt committed reports that it matched nothing, which <see cref="RelationalGrainStorage"/> settles from
-/// the ETag it generated. A repeated delete cannot be settled that way, because a deleted row leaves no ETag behind, so
-/// deletes run in a <see cref="SingleAttemptExecutionStrategy"/>.
+/// Writes run in a <see cref="SingleAttemptExecutionStrategy"/>, so a retrying execution strategy configured on the
+/// context never repeats them. A repeat after a connection failure would run after an attempt of unknown outcome, and if
+/// another writer moved the row on in between, nothing could tell whether this write had committed. Writes are repeated
+/// only when the server reported that the attempt was not applied (<see cref="TransientRetry"/>), as the
+/// <see cref="IGrainStateStore"/> contract requires. Reads keep the context's strategy, since repeating them is safe.
 /// </para>
 /// </remarks>
-internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFactory<TContext> contextFactory, SchemaMode schemaMode)
+internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFactory<TContext> contextFactory, SchemaMode schemaMode, TimeProvider timeProvider)
     : IGrainStateStore
     where TContext : DbContext
 {
@@ -53,7 +55,37 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
             .ConfigureAwait(false);
     }
 
-    public async Task<bool> TryInsertAsync(GrainStateKey key, byte[] payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken)
+    public Task<bool> TryInsertAsync(GrainStateKey key, byte[] payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken) =>
+        TransientRetry.ExecuteAsync(timeProvider, ct => InsertAsync(key, payload, etag, modifiedOn, ct), cancellationToken);
+
+    public Task<bool> TryUpdateAsync(GrainStateKey key, byte[] expectedETag, byte[]? payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken) =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
+        {
+            await using var context = await contextFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            var modifiedOnUtc = modifiedOn.UtcDateTime;
+            var updated = await new SingleAttemptExecutionStrategy(context)
+                .ExecuteAsync(
+                    c => Match(context, key, expectedETag).ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(r => r.Payload, payload)
+                            .SetProperty(r => r.ETag, etag)
+                            .SetProperty(r => r.ModifiedOn, modifiedOnUtc),
+                        c),
+                    ct)
+                .ConfigureAwait(false);
+            return updated == 1;
+        }, cancellationToken);
+
+    public Task<bool> TryDeleteAsync(GrainStateKey key, byte[] expectedETag, CancellationToken cancellationToken) =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
+        {
+            await using var context = await contextFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            return await new SingleAttemptExecutionStrategy(context)
+                .ExecuteAsync(c => Match(context, key, expectedETag).ExecuteDeleteAsync(c), ct)
+                .ConfigureAwait(false) == 1;
+        }, cancellationToken);
+
+    private async Task<bool> InsertAsync(GrainStateKey key, byte[] payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken)
     {
         DbUpdateException failure;
         await using (var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
@@ -72,7 +104,7 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
 
             try
             {
-                await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                await new SingleAttemptExecutionStrategy(context).ExecuteAsync(c => context.SaveChangesAsync(c), cancellationToken).ConfigureAwait(false);
                 return true;
             }
             catch (DbUpdateException exception)
@@ -81,8 +113,18 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
             }
         }
 
-        // Recognising a duplicate key from the exception would take each provider's error codes. A row now existing
-        // under the key identifies it without them; any other failure is rethrown.
+        var cause = failure.InnerException ?? failure;
+        switch (InsertErrors.IsDuplicateKey(cause))
+        {
+            case true:
+                return false;
+            case false:
+                ExceptionDispatchInfo.Throw(failure);
+                break;
+        }
+
+        // A driver whose errors cannot be recognised. A row existing under the key now is the best remaining evidence;
+        // if it was deleted in between, the original failure surfaces instead of a conflict, which is still safe.
         if (await ExistsAsync(key, cancellationToken).ConfigureAwait(false))
         {
             return false;
@@ -90,29 +132,6 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
 
         ExceptionDispatchInfo.Throw(failure);
         return false;
-    }
-
-    public async Task<bool> TryUpdateAsync(GrainStateKey key, byte[] expectedETag, byte[]? payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken)
-    {
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var modifiedOnUtc = modifiedOn.UtcDateTime;
-        var updated = await Match(context, key, expectedETag)
-            .ExecuteUpdateAsync(
-                setters => setters
-                    .SetProperty(r => r.Payload, payload)
-                    .SetProperty(r => r.ETag, etag)
-                    .SetProperty(r => r.ModifiedOn, modifiedOnUtc),
-                cancellationToken)
-            .ConfigureAwait(false);
-        return updated == 1;
-    }
-
-    public async Task<bool> TryDeleteAsync(GrainStateKey key, byte[] expectedETag, CancellationToken cancellationToken)
-    {
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        return await new SingleAttemptExecutionStrategy(context)
-            .ExecuteAsync(c => Match(context, key, expectedETag).ExecuteDeleteAsync(c), cancellationToken)
-            .ConfigureAwait(false) == 1;
     }
 
     private async Task<bool> ExistsAsync(GrainStateKey key, CancellationToken cancellationToken)

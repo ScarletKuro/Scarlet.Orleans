@@ -117,7 +117,7 @@ public abstract class ModelTests(DatabaseFixture fixture)
     public async Task Context_WithoutTheOrleansModel_FailsAtStartup()
     {
         var options = FlavourStorage.Configure(new DbContextOptionsBuilder<BareDbContext>(), fixture.Database).Options;
-        var store = new EntityFrameworkCoreGrainStateStore<BareDbContext>(new PooledDbContextFactory<BareDbContext>(options), SchemaMode.Validate);
+        var store = new EntityFrameworkCoreGrainStateStore<BareDbContext>(new PooledDbContextFactory<BareDbContext>(options), SchemaMode.Validate, TimeProvider.System);
         var storage = new RelationalGrainStorage("test", "model-tests", store, new JsonTestSerializer(), new TestActivatorProvider(), false, 0, TimeProvider.System, NullLogger<RelationalGrainStorage>.Instance);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => storage.InitializeAsync(CancellationToken));
@@ -133,7 +133,7 @@ public abstract class ModelTests(DatabaseFixture fixture)
         var engine = RelationalEngines.Parse(database.Engine);
         var scriptEngine = engine == RelationalEngine.MariaDb ? RelationalEngine.MySql : engine;
         var script = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Schema", $"{scriptEngine}-0001-grain-state.sql"), CancellationToken);
-        foreach (var sql in new[] { SchemaLedger.CreateTable(engine), script })
+        foreach (var sql in new[] { SchemaLedgerSql.CreateTable(engine), script })
         {
             await using var command = database.DataSource.CreateCommand(sql);
             await command.ExecuteNonQueryAsync(CancellationToken);

@@ -1,6 +1,3 @@
-using Scarlet.Orleans.Relational;
-using Scarlet.Orleans.Relational.Schema;
-
 namespace Scarlet.Orleans.Persistence;
 
 internal static class PersistenceSchema
@@ -19,7 +16,4 @@ internal static class PersistenceSchema
     /// The newest schema version. The ADO.NET flavour ships one script per version and engine; a test keeps them in step.
     /// </summary>
     public const int LatestVersion = 1;
-
-    public static SchemaMigrator CreateMigrator(RelationalEngine engine) =>
-        new(Component, engine, SchemaScript.Load(typeof(PersistenceSchema).Assembly, engine), MinimumVersion);
 }

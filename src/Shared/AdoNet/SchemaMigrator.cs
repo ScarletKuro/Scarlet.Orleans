@@ -49,14 +49,14 @@ internal sealed class SchemaMigrator(string component, RelationalEngine engine, 
         }
         finally
         {
-            await using var release = Command(connection, null, SchemaLedger.ReleaseLock(engine));
+            await using var release = Command(connection, null, SchemaLedgerSql.ReleaseLock(engine));
             await release.ExecuteNonQueryAsync(CancellationToken.None).ConfigureAwait(false);
         }
     }
 
     private async Task RunAsync(DbConnection connection, DbTransaction? transaction, bool apply, CancellationToken cancellationToken)
     {
-        await using (var exists = Command(connection, transaction, SchemaLedger.TableExists(engine)))
+        await using (var exists = Command(connection, transaction, SchemaLedgerSql.TableExists(engine)))
         {
             if (Convert.ToInt64(await exists.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture) == 0)
             {
@@ -66,7 +66,7 @@ internal sealed class SchemaMigrator(string component, RelationalEngine engine, 
                         $"The {component} schema is not installed. Run these scripts, or set the schema mode to Apply: {string.Join(", ", scripts.Select(s => s.Name))}.");
                 }
 
-                await using var create = Command(connection, transaction, SchemaLedger.CreateTable(engine));
+                await using var create = Command(connection, transaction, SchemaLedgerSql.CreateTable(engine));
                 await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
         }
@@ -173,7 +173,7 @@ internal sealed class SchemaMigrator(string component, RelationalEngine engine, 
 
     private async Task AcquireLockAsync(DbConnection connection, CancellationToken cancellationToken)
     {
-        await using var acquire = Command(connection, null, SchemaLedger.AcquireLock(engine));
+        await using var acquire = Command(connection, null, SchemaLedgerSql.AcquireLock(engine));
         acquire.CommandTimeout = (int)LockTimeout.TotalSeconds + 30;
         if (engine == RelationalEngine.SqlServer)
         {
@@ -201,8 +201,3 @@ internal sealed class SchemaMigrator(string component, RelationalEngine engine, 
 
     private sealed record AppliedVersion(int Version, string? Checksum, string Source);
 }
-
-/// <summary>
-/// The database schema does not match what this code supports.
-/// </summary>
-internal sealed class SchemaVersionException(string message, Exception? innerException = null) : InvalidOperationException(message, innerException);
