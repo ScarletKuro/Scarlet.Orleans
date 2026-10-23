@@ -15,10 +15,11 @@ internal static class FlavourStorage
     public static IGrainStateStore CreateStore(TestDatabase database, TestSchemaMode schemaMode) =>
         new AdoNetGrainStateStore(database.DataSource, EngineOption(database), (SchemaMode)schemaMode, TimeProvider.System);
 
-    public static void AddStorage(ISiloBuilder silo, string name, TestDatabase database) =>
+    public static void AddStorage(ISiloBuilder silo, string name, TestDatabase database, bool deleteStateOnClear = false) =>
         silo.AddScarletAdoNetGrainStorage(name, options =>
         {
             options.DataSource = database.DataSource;
+            options.DeleteStateOnClear = deleteStateOnClear;
             options.Engine = EngineOption(database);
             options.SchemaMode = SchemaMode.Apply;
         });

@@ -13,10 +13,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Persistence\Scarlet.Orleans.Persistence.EntityFrameworkCore\Scarlet.Orleans.Persistence.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\External\Orleans.Persistence.TestKit\Orleans.Persistence.TestKit.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="xunit.v3.mtp-v2" />
+    <PackageReference Include="xunit.v3" />
     <PackageReference Include="Microsoft.Orleans.Sdk" />
     <PackageReference Include="Microsoft.Orleans.TestingHost" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />

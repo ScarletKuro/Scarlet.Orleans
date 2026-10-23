@@ -46,7 +46,7 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
 
     private string? AdminConnectionString => EnvironmentVariable is null ? null : Environment.GetEnvironmentVariable(EnvironmentVariable);
 
-    private bool IsAvailable => EnvironmentVariable is null || !string.IsNullOrWhiteSpace(AdminConnectionString);
+    public bool IsAvailable => EnvironmentVariable is null || !string.IsNullOrWhiteSpace(AdminConnectionString);
 
     /// <summary>
     /// The database shared by the tests of a class. Tests isolate their rows with unique service IDs.
@@ -124,10 +124,23 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
     {
         var path = Path.Combine(Path.GetTempPath(), name + ".db");
 
-        var connectionString = new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString();
+        var connectionString = new SqliteConnectionStringBuilder { DataSource = path }.ToString();
+        using (var connection = new SqliteConnection(connectionString))
+        {
+            connection.Open();
+            using var wal = connection.CreateCommand();
+            wal.CommandText = "PRAGMA journal_mode = WAL";
+            wal.ExecuteNonQuery();
+        }
+
         return new TestDatabase(Engine, Driver, connectionString, SqliteFactory.Instance.CreateDataSource(connectionString), () =>
         {
-            File.Delete(path);
+            SqliteConnection.ClearAllPools();
+            foreach (var file in new[] { path, path + "-wal", path + "-shm" })
+            {
+                File.Delete(file);
+            }
+
             return Task.CompletedTask;
         });
     }

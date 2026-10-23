@@ -23,10 +23,14 @@ internal static class FlavourStorage
     public static IGrainStateStore CreateStore(TestDatabase database, TestSchemaMode schemaMode) =>
         new EntityFrameworkCoreGrainStateStore<TestDbContext>(ContextFactory(database), (SchemaMode)schemaMode, TimeProvider.System);
 
-    public static void AddStorage(ISiloBuilder silo, string name, TestDatabase database)
+    public static void AddStorage(ISiloBuilder silo, string name, TestDatabase database, bool deleteStateOnClear = false)
     {
         silo.Services.AddDbContextFactory<TestDbContext>(options => Configure(options, database));
-        silo.AddScarletEntityFrameworkCoreGrainStorage<TestDbContext>(name, options => options.SchemaMode = SchemaMode.Apply);
+        silo.AddScarletEntityFrameworkCoreGrainStorage<TestDbContext>(name, options =>
+        {
+            options.SchemaMode = SchemaMode.Apply;
+            options.DeleteStateOnClear = deleteStateOnClear;
+        });
     }
 
     public static IDbContextFactory<TestDbContext> ContextFactory(TestDatabase database) =>
