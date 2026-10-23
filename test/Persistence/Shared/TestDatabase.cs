@@ -69,14 +69,24 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
     }
 
     /// <summary>
-    /// Skips the calling test when this engine is not configured.
+    /// Skips the calling test when this engine is not configured, unless <c>SCARLET_TEST_REQUIRE</c> lists the engine,
+    /// in which case the test fails, so a CI job cannot pass by skipping its own engine.
     /// </summary>
     public void Require()
     {
-        if (!IsAvailable)
+        if (IsAvailable)
         {
-            Assert.Skip($"Set {EnvironmentVariable} to an administrative connection string to run {Engine} tests.");
+            return;
         }
+
+        var message = $"Set {EnvironmentVariable} to an administrative connection string to run {Engine} tests.";
+        var required = (Environment.GetEnvironmentVariable("SCARLET_TEST_REQUIRE") ?? "").Split(',', StringSplitOptions.TrimEntries);
+        if (required.Contains(Engine, StringComparer.OrdinalIgnoreCase))
+        {
+            Assert.Fail(message);
+        }
+
+        Assert.Skip(message);
     }
 
     /// <summary>
