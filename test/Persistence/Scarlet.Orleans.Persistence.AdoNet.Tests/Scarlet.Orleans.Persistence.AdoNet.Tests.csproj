@@ -23,6 +23,7 @@
     <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="MySqlConnector" />
+    <PackageReference Include="MySql.Data" />
   </ItemGroup>
 
 </Project>

@@ -38,12 +38,13 @@ internal static class RelationalEngines
     /// </summary>
     /// <remarks>
     /// MySqlConnector serves both MySQL and MariaDB, so its connections map to MySQL; MariaDB users set the engine explicitly.
+    /// Oracle's MySql.Data is supported as well; it populates <see cref="DbException.SqlState"/> like MySqlConnector.
     /// </remarks>
     public static RelationalEngine FromConnection(DbConnection connection) => connection.GetType().FullName switch
     {
         "Microsoft.Data.SqlClient.SqlConnection" => RelationalEngine.SqlServer,
         "Npgsql.NpgsqlConnection" => RelationalEngine.PostgreSql,
-        "MySqlConnector.MySqlConnection" => RelationalEngine.MySql,
+        "MySqlConnector.MySqlConnection" or "MySql.Data.MySqlClient.MySqlConnection" => RelationalEngine.MySql,
         "Microsoft.Data.Sqlite.SqliteConnection" => RelationalEngine.Sqlite,
         var name => throw new NotSupportedException(
             $"Cannot infer the database engine from connection type \"{name}\". Set the Engine option to one of: {string.Join(", ", Names)}."),

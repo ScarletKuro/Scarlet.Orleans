@@ -15,7 +15,8 @@ public sealed class ScarletAdoNetGrainStorageOptions : IStorageProviderSerialize
     /// </summary>
     /// <remarks>
     /// The driver is whatever created the data source, for example <c>NpgsqlDataSource.Create(...)</c> or
-    /// <c>SqlClientFactory.Instance.CreateDataSource(...)</c>. Nothing is loaded by name or reflection.
+    /// <c>SqlClientFactory.Instance.CreateDataSource(...)</c>. MySQL works with both MySqlConnector and Oracle's MySql.Data.
+    /// Nothing is loaded by name or reflection.
     /// </remarks>
     public DbDataSource? DataSource { get; set; }
 

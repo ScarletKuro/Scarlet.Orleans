@@ -115,6 +115,12 @@ public abstract class ModelTests(DatabaseFixture fixture)
                 WHERE c.TABLE_NAME = '{PersistenceSchema.TableName}'
                 ORDER BY c.COLUMN_NAME
                 """,
+            "MySql" or "MariaDb" => $"""
+                SELECT column_name, column_type, is_nullable, column_key, character_set_name
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = '{PersistenceSchema.TableName}'
+                ORDER BY column_name
+                """,
             _ => throw new NotSupportedException(database.Engine),
         };
 

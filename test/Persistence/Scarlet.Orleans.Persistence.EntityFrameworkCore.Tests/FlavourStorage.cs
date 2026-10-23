@@ -49,6 +49,12 @@ internal static class FlavourStorage
             case "SqlServer":
                 builder.UseSqlServer(database.ConnectionString);
                 break;
+            case "MySql" when database.Driver == TestDrivers.MySqlData:
+                builder.UseMySQL(database.ConnectionString);
+                break;
+            case "MySql" or "MariaDb":
+                builder.UseMySql(database.ConnectionString, ServerVersion.AutoDetect(database.ConnectionString));
+                break;
             default:
                 throw new NotSupportedException(database.Engine);
         }

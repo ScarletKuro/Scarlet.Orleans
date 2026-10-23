@@ -29,3 +29,9 @@ public sealed class SqlServerSchemaMigratorTests(SqlServerDatabaseFixture fixtur
 public sealed class MySqlSchemaMigratorTests(MySqlDatabaseFixture fixture) : SchemaMigratorTests(fixture), IClassFixture<MySqlDatabaseFixture>;
 
 public sealed class MariaDbSchemaMigratorTests(MariaDbDatabaseFixture fixture) : SchemaMigratorTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MySqlDataGrainStorageTests(MySqlDataDatabaseFixture fixture) : GrainStorageConformanceTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class MySqlDataSchemaManagementTests(MySqlDataDatabaseFixture fixture) : SchemaManagementTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class MySqlDataSchemaMigratorTests(MySqlDataDatabaseFixture fixture) : SchemaMigratorTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
