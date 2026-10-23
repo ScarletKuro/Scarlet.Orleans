@@ -37,9 +37,28 @@ public sealed class InsertErrorsTests
         Assert.False(InsertErrors.IsDuplicateKey(new PostgresException("foreign key", "ERROR", "ERROR", "23503")));
     }
 
-    [Fact]
-    public void UnknownDriver_IsNotClassified() =>
-        Assert.Null(InsertErrors.IsDuplicateKey(new UnknownDriverException()));
+    [Theory]
+    [InlineData("23505", true)]
+    [InlineData("23000", null)]
+    [InlineData("23503", null)]
+    [InlineData("42P01", false)]
+    [InlineData(null, null)]
+    public void UnknownDriver_IsClassifiedByItsStandardSqlState(string? sqlState, bool? expected) =>
+        Assert.Equal(expected, InsertErrors.IsDuplicateKey(new UnknownDriverException(sqlState)));
 
-    private sealed class UnknownDriverException() : DbException("unknown");
+    [Fact]
+    public void ApplicationRule_DecidesAlone()
+    {
+        Assert.False(InsertErrors.IsDuplicateKey(new PostgresException("duplicate", "ERROR", "ERROR", "23505"), _ => false));
+        Assert.True(InsertErrors.IsDuplicateKey(new UnknownDriverException(sqlState: null), _ => true));
+    }
+
+    [Fact]
+    public void NonDatabaseError_IsNotClassified() =>
+        Assert.Null(InsertErrors.IsDuplicateKey(new InvalidOperationException(), _ => true));
+
+    private sealed class UnknownDriverException(string? sqlState) : DbException("unknown driver")
+    {
+        public override string? SqlState { get; } = sqlState;
+    }
 }

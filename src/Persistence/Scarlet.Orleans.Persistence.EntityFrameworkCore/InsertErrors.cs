@@ -27,17 +27,40 @@ internal static class InsertErrors
     ];
 
     /// <summary>
-    /// Returns whether <paramref name="exception"/> reports a duplicate key, or <see langword="null"/> if it comes from a
-    /// driver whose errors cannot be recognised.
+    /// Returns whether <paramref name="exception"/> reports a duplicate key, or <see langword="null"/> if its cause cannot
+    /// be recognised.
     /// </summary>
-    public static bool? IsDuplicateKey(Exception exception)
+    /// <param name="exception">The error of the failed insert, unwrapped from EF Core's <c>DbUpdateException</c>.</param>
+    /// <param name="isDuplicateKeyError">
+    /// The application's own rule (<see cref="ScarletEntityFrameworkCoreGrainStorageOptions.IsDuplicateKeyError"/>). When
+    /// set, it alone decides, for drivers whose errors the built-in rules do not recognise.
+    /// </param>
+    public static bool? IsDuplicateKey(Exception exception, Func<DbException, bool>? isDuplicateKeyError = null)
     {
-        if (exception is not DbException { } error || !IsFromKnownDriver(error))
+        if (exception is not DbException { } error)
         {
             return null;
         }
 
-        return DbErrors.IsDuplicateKey(error) || SqliteExtendedErrorCode(error) is 1555 or 2067;
+        if (isDuplicateKeyError is not null)
+        {
+            return isDuplicateKeyError(error);
+        }
+
+        if (IsFromKnownDriver(error))
+        {
+            return DbErrors.IsDuplicateKey(error) || SqliteExtendedErrorCode(error) is 1555 or 2067;
+        }
+
+        // Any other driver that reports a standard SQLSTATE: 23505 is unique_violation, and a code outside class 23
+        // (integrity constraint violation) cannot be one. Other class 23 codes are left open, because some drivers report
+        // a duplicate key as the general 23000.
+        return error.SqlState switch
+        {
+            "23505" => true,
+            { Length: 5 } state when !state.StartsWith("23", StringComparison.Ordinal) => false,
+            _ => null,
+        };
     }
 
     private static bool IsFromKnownDriver(DbException exception)

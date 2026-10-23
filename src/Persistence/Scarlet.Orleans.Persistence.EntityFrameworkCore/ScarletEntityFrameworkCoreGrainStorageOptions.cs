@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Orleans;
 using Orleans.Storage;
 
@@ -21,6 +22,19 @@ public sealed class ScarletEntityFrameworkCoreGrainStorageOptions : IStorageProv
     /// Whether clearing state deletes the row, rather than keeping it with no payload and a new ETag.
     /// </summary>
     public bool DeleteStateOnClear { get; set; }
+
+    /// <summary>
+    /// Decides whether the error of a failed insert reports a duplicate key, for an ADO.NET driver whose errors are not
+    /// recognised. When <see langword="null"/>, the default, the errors of Npgsql, Microsoft.Data.SqlClient,
+    /// MySqlConnector, MySql.Data and Microsoft.Data.Sqlite are recognised, as is the standard SQLSTATE 23505 of any driver.
+    /// </summary>
+    /// <remarks>
+    /// When set, this rule alone decides. A duplicate key it does not recognise surfaces as the driver's error, rather than
+    /// as <see cref="global::Orleans.Storage.InconsistentStateException"/>. For a driver that is not recognised and this
+    /// rule is not set, a failed insert is reported as a duplicate key if a row exists under the key afterwards, which
+    /// misjudges a conflicting row deleted in between.
+    /// </remarks>
+    public Func<DbException, bool>? IsDuplicateKeyError { get; set; }
 
     /// <inheritdoc/>
     public IGrainStorageSerializer GrainStorageSerializer { get; set; } = null!;

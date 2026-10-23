@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -24,7 +25,15 @@ namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
 /// <see cref="IGrainStateStore"/> contract requires. Reads keep the context's strategy, since repeating them is safe.
 /// </para>
 /// </remarks>
-internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFactory<TContext> contextFactory, SchemaMode schemaMode, TimeProvider timeProvider)
+/// <param name="contextFactory">Creates the short-lived context of each operation.</param>
+/// <param name="schemaMode">What to check about the schema at startup.</param>
+/// <param name="timeProvider">Times the delays between retries of transient errors.</param>
+/// <param name="isDuplicateKeyError">The application's rule for recognising duplicate keys (<see cref="ScarletEntityFrameworkCoreGrainStorageOptions.IsDuplicateKeyError"/>).</param>
+internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(
+    IDbContextFactory<TContext> contextFactory,
+    SchemaMode schemaMode,
+    TimeProvider timeProvider,
+    Func<DbException, bool>? isDuplicateKeyError = null)
     : IGrainStateStore
     where TContext : DbContext
 {
@@ -114,7 +123,7 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
         }
 
         var cause = failure.InnerException ?? failure;
-        switch (InsertErrors.IsDuplicateKey(cause))
+        switch (InsertErrors.IsDuplicateKey(cause, isDuplicateKeyError))
         {
             case true:
                 return false;
@@ -123,8 +132,8 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
                 break;
         }
 
-        // A driver whose errors cannot be recognised. A row existing under the key now is the best remaining evidence;
-        // if it was deleted in between, the original failure surfaces instead of a conflict, which is still safe.
+        // A cause that cannot be recognised. A row existing under the key now is the best remaining evidence; if it was
+        // deleted in between, the original failure surfaces instead of a conflict, which is still safe.
         if (await ExistsAsync(key, cancellationToken).ConfigureAwait(false))
         {
             return false;

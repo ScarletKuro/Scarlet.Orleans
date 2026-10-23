@@ -95,6 +95,22 @@ public sealed class ExecutionStrategyTests(SqliteDatabaseFixture fixture) : ICla
         Assert.IsType<InconsistentStateException>(exception);
     }
 
+    [Fact]
+    public async Task DuplicateInsert_WhenTheApplicationRuleRejectsIt_SurfacesTheDriverError()
+    {
+        await FlavourStorage.EnsureSchemaAsync(fixture.Database, TestContext.Current.CancellationToken);
+        var store = new EntityFrameworkCoreGrainStateStore<TestDbContext>(
+            FlavourStorage.ContextFactory(fixture.Database), SchemaMode.Validate, TimeProvider.System, isDuplicateKeyError: _ => false);
+        var storage = FlavourStorage.Create(store, $"service-{Guid.NewGuid():N}", deleteStateOnClear: false);
+        await storage.InitializeAsync(TestContext.Current.CancellationToken);
+        var grainId = NewGrainId();
+        await storage.WriteStateAsync(StateName, grainId, new GrainState<TestState> { State = new TestState { Value = 1 } });
+
+        var exception = await Record.ExceptionAsync(() => storage.WriteStateAsync(StateName, grainId, new GrainState<TestState> { State = new TestState { Value = 2 } }));
+
+        Assert.IsType<DbUpdateException>(exception);
+    }
+
     private static GrainId NewGrainId() => GrainId.Create("test-grain", Guid.NewGuid().ToString("N"));
 
     private static async Task<GrainState<TestState>> ReadAsync(RelationalGrainStorage storage, GrainId grainId)
