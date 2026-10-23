@@ -530,6 +530,11 @@ EF translation is not immune to upgrades either: provider bugs and translation c
 - **Fresh equals migrated.** A test compares a fresh install with an old install plus all migrations, at the schema level (columns, types, indexes) and the behaviour level.
 - **Type checks.** A test asserts that every column type can hold every value the C# side writes and reads (the SQLite version problem).
 - Migrations are idempotent and safe to rerun. Data backfills are batched.
+- **Rules for every new schema version**, because schema changes outlive code changes:
+  - a shipped script never changes; a fix is a new version;
+  - each version states its requirements in one place: the SQL migration per engine, the EF model change, the data steps of its EF migration helper (section 8.1), and the minimum version the code then needs;
+  - each version gets an upgrade test from a populated database of the previous version through both paths, SQL migration and EF migration, compared row by row;
+  - the runner stays a ledger, a lock and ordered scripts. Anything a version needs beyond that is written into that version's scripts, not added to the runner.
 
 ### 8.1 Opt-in schema management for the ADO.NET flavour
 

@@ -54,14 +54,13 @@ internal sealed partial class RelationalGrainStorage(
         cancellationToken.ThrowIfCancellationRequested();
         using var scope = SuppressAmbientTransaction();
         var key = GrainStateKey.Create(serviceId, stateName, grainId);
-        var stored = await store.ReadAsync(key, cancellationToken).ConfigureAwait(false);
+        var stored = await ReadVerifiedAsync(key, cancellationToken).ConfigureAwait(false);
         if (stored is null)
         {
             Reset(grainState, etag: null);
             return;
         }
 
-        VerifyIdentity(key, stored);
         if (stored.Payload is null)
         {
             Reset(grainState, ETags.Format(stored.ETag));
@@ -99,12 +98,12 @@ internal sealed partial class RelationalGrainStorage(
         else
         {
             // An ETag this provider never issued cannot be current.
-            written = false;
+            throw await CreateConflictAsync("Write", key, grainState.ETag, cancellationToken).ConfigureAwait(false);
         }
 
-        if (!written && await CreateConflictAsync("Write", key, grainState.ETag, etag, cancellationToken).ConfigureAwait(false) is { } conflict)
+        if (!written)
         {
-            throw conflict;
+            await ResolveUnmatchedWriteAsync("Write", key, grainState.ETag, etag, cancellationToken).ConfigureAwait(false);
         }
 
         grainState.ETag = ETags.Format(etag);
@@ -122,11 +121,9 @@ internal sealed partial class RelationalGrainStorage(
         if (grainState.ETag is null)
         {
             // Nothing was ever written, as far as this grain knows: that holds only if there is no row.
-            var stored = await store.ReadAsync(key, cancellationToken).ConfigureAwait(false);
-            if (stored is not null)
+            if (await ReadVerifiedAsync(key, cancellationToken).ConfigureAwait(false) is { } stored)
             {
-                VerifyIdentity(key, stored);
-                throw CreateConflict("Clear", key, ETags.Format(stored.ETag), grainState.ETag);
+                throw CreateConflict("Clear", key, stored, grainState.ETag);
             }
 
             Reset(grainState, etag: null);
@@ -135,14 +132,14 @@ internal sealed partial class RelationalGrainStorage(
 
         if (!ETags.TryParse(grainState.ETag, out var expected))
         {
-            throw (await CreateConflictAsync("Clear", key, grainState.ETag, proposedETag: null, cancellationToken).ConfigureAwait(false))!;
+            throw await CreateConflictAsync("Clear", key, grainState.ETag, cancellationToken).ConfigureAwait(false);
         }
 
         if (deleteStateOnClear)
         {
             if (!await store.TryDeleteAsync(key, expected, cancellationToken).ConfigureAwait(false))
             {
-                throw (await CreateConflictAsync("Clear", key, grainState.ETag, proposedETag: null, cancellationToken).ConfigureAwait(false))!;
+                throw await CreateConflictAsync("Clear", key, grainState.ETag, cancellationToken).ConfigureAwait(false);
             }
 
             Reset(grainState, etag: null);
@@ -150,44 +147,65 @@ internal sealed partial class RelationalGrainStorage(
         }
 
         var etag = ETags.New(timeProvider);
-        if (!await store.TryUpdateAsync(key, expected, payload: null, etag, timeProvider.GetUtcNow(), cancellationToken).ConfigureAwait(false)
-            && await CreateConflictAsync("Clear", key, grainState.ETag, etag, cancellationToken).ConfigureAwait(false) is { } conflict)
+        if (!await store.TryUpdateAsync(key, expected, payload: null, etag, timeProvider.GetUtcNow(), cancellationToken).ConfigureAwait(false))
         {
-            throw conflict;
+            await ResolveUnmatchedWriteAsync("Clear", key, grainState.ETag, etag, cancellationToken).ConfigureAwait(false);
         }
 
         Reset(grainState, ETags.Format(etag));
     }
 
     /// <summary>
-    /// Explains a write that matched no row: a hash collision if another identity holds the key, otherwise a stale ETag.
-    /// Returns <see langword="null"/> when the row holds <paramref name="proposedETag"/>, the ETag this call generated.
+    /// Settles a write that matched no row. Returns if the row holds <paramref name="proposedETag"/>, the ETag this call
+    /// generated; otherwise throws <see cref="InconsistentStateException"/>, or <see cref="GrainStateKeyCollisionException"/>
+    /// if another identity holds the key.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// A row holding the proposed ETag means this write committed and a later attempt of the same statement found it
-    /// already applied, for example a driver or EF Core retry after the acknowledgement of a committed write was lost.
-    /// No other writer can produce that ETag, so the write succeeded and is not a conflict (design section 4.7).
-    /// </para>
-    /// <para>Only failed writes pay for this read.</para>
+    /// A store reports the result of the statement it ran (<see cref="IGrainStateStore"/>). When a driver or EF Core repeats
+    /// a statement whose first attempt committed but whose acknowledgement was lost, the repeat matches no row, yet the
+    /// write succeeded. Only this call can have produced the proposed ETag, so finding it proves the write committed
+    /// (design section 4.7). Only writes that matched no row pay for this read.
     /// </remarks>
-    private async Task<Exception?> CreateConflictAsync(string operation, GrainStateKey key, string? expectedETag, byte[]? proposedETag, CancellationToken cancellationToken)
+    private async Task ResolveUnmatchedWriteAsync(string operation, GrainStateKey key, string? expectedETag, byte[] proposedETag, CancellationToken cancellationToken)
+    {
+        var stored = await ReadVerifiedAsync(key, cancellationToken).ConfigureAwait(false);
+        if (stored is not null && stored.ETag.AsSpan().SequenceEqual(proposedETag))
+        {
+            return;
+        }
+
+        throw CreateConflict(operation, key, stored, expectedETag);
+    }
+
+    /// <summary>
+    /// Creates the exception for a request that cannot have been applied: a delete that matched no row, or an ETag this
+    /// provider never issued. Throws <see cref="GrainStateKeyCollisionException"/> instead if another identity holds the key.
+    /// </summary>
+    /// <remarks>
+    /// A delete leaves no ETag behind to prove that it committed, so a delete that matched no row is always a conflict.
+    /// </remarks>
+    private async Task<InconsistentStateException> CreateConflictAsync(string operation, GrainStateKey key, string? expectedETag, CancellationToken cancellationToken) =>
+        CreateConflict(operation, key, await ReadVerifiedAsync(key, cancellationToken).ConfigureAwait(false), expectedETag);
+
+    private InconsistentStateException CreateConflict(string operation, GrainStateKey key, StoredGrainState? stored, string? expectedETag)
+    {
+        var storedETag = stored is null ? null : ETags.Format(stored.ETag);
+        return new($"Version conflict ({operation}): ProviderName={name} {key} ETag={expectedETag ?? "null"} StoredETag={storedETag ?? "none"}.", storedETag, expectedETag);
+    }
+
+    /// <summary>
+    /// Reads the row under the key's hash, throwing <see cref="GrainStateKeyCollisionException"/> if it belongs to another identity.
+    /// </summary>
+    private async Task<StoredGrainState?> ReadVerifiedAsync(GrainStateKey key, CancellationToken cancellationToken)
     {
         var stored = await store.ReadAsync(key, cancellationToken).ConfigureAwait(false);
         if (stored is not null)
         {
             VerifyIdentity(key, stored);
-            if (proposedETag is not null && stored.ETag.AsSpan().SequenceEqual(proposedETag))
-            {
-                return null;
-            }
         }
 
-        return CreateConflict(operation, key, stored is null ? null : ETags.Format(stored.ETag), expectedETag);
+        return stored;
     }
-
-    private InconsistentStateException CreateConflict(string operation, GrainStateKey key, string? storedETag, string? expectedETag) =>
-        new($"Version conflict ({operation}): ProviderName={name} {key} ETag={expectedETag ?? "null"} StoredETag={storedETag ?? "none"}.", storedETag, expectedETag);
 
     private static void VerifyIdentity(GrainStateKey key, StoredGrainState stored)
     {
