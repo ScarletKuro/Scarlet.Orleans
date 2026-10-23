@@ -51,6 +51,7 @@ internal sealed partial class RelationalGrainStorage(
 
     public async Task ReadStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var scope = SuppressAmbientTransaction();
         var key = GrainStateKey.Create(serviceId, stateName, grainId);
         var stored = await store.ReadAsync(key, cancellationToken).ConfigureAwait(false);
@@ -77,6 +78,9 @@ internal sealed partial class RelationalGrainStorage(
 
     public async Task WriteStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken)
     {
+        // A canceled call does no work and leaves the grain state untouched. Once a write commits, the result is reported
+        // whatever happens to the token, because the grain must learn its new ETag.
+        cancellationToken.ThrowIfCancellationRequested();
         using var scope = SuppressAmbientTransaction();
         var key = GrainStateKey.Create(serviceId, stateName, grainId);
         var payload = serializer.Serialize(grainState.State).ToArray();
@@ -112,6 +116,7 @@ internal sealed partial class RelationalGrainStorage(
 
     public async Task ClearStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var scope = SuppressAmbientTransaction();
         var key = GrainStateKey.Create(serviceId, stateName, grainId);
         if (grainState.ETag is null)
