@@ -150,7 +150,7 @@ That is 11 packages: ten runtime packages and a tool. No runtime package referen
 
 The store conformance kit is not published. It lives in the repository's test projects, which link the store contracts. Store contracts are internal, so writing a third-party backend against them is not supported. If that need appears, a deliberately designed public package can expose them later.
 
-**Trade-off: error classification without driver references.** Deciding whether an error is a duplicate key, a deadlock or a transient failure (section 4.7) cannot use driver exception types. Npgsql and MySqlConnector populate `DbException.SqlState`, but SQL Server's client reports numeric error codes instead. Each engine's dialect therefore includes a classifier that reads what `DbException` exposes, and the classifier is pluggable (section 3.5) for drivers where that is not enough. Verify each supported driver before relying on this.
+**Trade-off: error classification without driver references.** Deciding whether an error is a duplicate key, a deadlock or a transient failure (section 4.7) cannot use driver exception types. Npgsql and MySqlConnector populate `DbException.SqlState`, but SQL Server's client reports numeric error codes instead. Each engine's dialect therefore includes a classifier that reads what `DbException` exposes, and the classifier is pluggable (section 3.5) for drivers where that is not enough. Verify each supported driver before relying on this. Microsoft.Data.Sqlite turned out to expose its result code only on `SqliteException` (`DbException.ErrorCode` is the generic `E_FAIL`), so SQLite statements are written to need no classification: inserts use `ON CONFLICT DO NOTHING` and check the row count, and the driver retries a busy database itself.
 
 ### 3.5 Choosing the engine and driver
 
@@ -197,7 +197,7 @@ silo.AddScarletAdoNetGrainStorage("Default", options =>
 
 ### 4.2 ETags: GUIDs generated in C#
 
-- Every row with optimistic concurrency has an `etag` column holding a GUID (`uniqueidentifier`, `uuid`, `binary(16)`, `raw(16)`, or a blob on SQLite).
+- Every row with optimistic concurrency has an `etag` column holding a GUID stored as 16 bytes on every engine (`binary(16)`, `bytea`, `raw(16)`, or a blob on SQLite). Native GUID types are avoided because drivers disagree on their byte order (`uniqueidentifier`, MySQL GUID formats).
 - The shared infrastructure generates the new ETag with `Guid.CreateVersion7()` and passes it as a parameter. Writes are `UPDATE … SET etag = @new … WHERE … AND etag = @expected`.
 - Consequences: it cannot overflow, a stale ETag matching again has negligible probability (a UUIDv7 carries a millisecond timestamp plus 74 random bits, so a repeat needs two writes in the same millisecond to draw the same 74 bits, compared with a certainty after 2³¹ writes for a wrapping 32-bit counter), the SQL is identical on every engine, and the ETag is opaque to callers, which is all Orleans requires.
 - Because the client generates the new ETag before writing, a read-back can often settle an uncertain write: if the row holds the ETag it generated, the write committed; if it still holds the expected ETag, it did not. Any other value leaves the outcome unknown, because another writer may have changed the row after this write committed (section 4.7).
@@ -215,8 +215,8 @@ silo.AddScarletAdoNetGrainStorage("Default", options =>
   - membership: cluster ID, silo address and generation.
 - **Identities are bytes, not text.** An Orleans `GrainId` is a `GrainType` and an `IdSpan` key, both arbitrary byte sequences; they are usually UTF-8 but nothing guarantees it, and decoding invalid UTF-8 replaces bytes with U+FFFD, which would collapse distinct identities. So:
   - the hash input is the original bytes of each part (`GrainType.AsSpan()`, `IdSpan.AsSpan()`, and the UTF-8 of parts that are .NET strings, such as service ID and state name), each with a length prefix, in a documented order, so it never depends on runtime string hashing or text decoding;
-  - the verified identity columns store those same bytes (`varbinary(max)`, `bytea`, `longblob`, `blob`), and comparisons are byte comparisons, which also avoids collation and case-folding differences between engines;
-  - a separate, non-unique text column (`grain_id_display`) holds `GrainId.ToString()` for humans and queries, and is never used for identity.
+  - one `grain_identity` column stores exactly the hashed bytes (`varbinary(max)`, `bytea`, `longblob`, `blob`), and comparisons are byte comparisons, which also avoids collation and case-folding differences between engines;
+  - plain text columns (`service_id`, `state_name`, `grain_id` holding `GrainId.ToString()`) are for humans and queries, and are never used for identity.
 - A test round-trips identities with invalid UTF-8, embedded NUL and bytes that differ only after decoding, and asserts each stays distinct.
 
 ### 4.4 Serialization
@@ -381,7 +381,7 @@ The ADO.NET flavour aims to be fully NativeAOT- and trimming-compatible from the
 
 **Table**
 
-- `orleans_grain_state`: `key_hash` (key), `service_id`, `grain_type` and `grain_id` (bytes, section 4.3), `state_name`, `grain_id_display`, `payload`, `content_type`, `etag`, `modified_on`.
+- `orleans_grain_state`: `key_hash` (key), `grain_identity` (bytes, section 4.3), `service_id`, `state_name`, `grain_id` (display text), `payload` (null once cleared), `etag`, `modified_on`. There is no `content_type`, since `IGrainStorageSerializer` does not report one.
 
 **Guarantees** (the `IGrainStorage` contract)
 

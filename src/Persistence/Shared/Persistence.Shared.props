@@ -1,0 +1,8 @@
+<Project>
+  <!-- Linked into both persistence packages, so both run the same component logic over the same schema. -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)*.cs" LinkBase="Persistence" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)Schema/*.sql" LogicalName="%(Filename)%(Extension)" />
+    <None Include="$(MSBuildThisFileDirectory)Schema/*.sql" Pack="true" PackagePath="schema/" Visible="false" />
+  </ItemGroup>
+</Project>

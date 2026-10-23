@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\Shared\Persistence.Shared.props" />
+
+  <PropertyGroup>
+    <Description>Orleans grain persistence for relational databases over plain ADO.NET: SQL Server, PostgreSQL, MySQL, MariaDB and SQLite. NativeAOT compatible.</Description>
+    <PackageTags>orleans;persistence;ado.net;sql;postgresql;mysql;mariadb;sqlite;sqlserver</PackageTags>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Orleans.Runtime" />
+    <PackageReference Include="System.IO.Hashing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Scarlet.Orleans.Persistence.AdoNet.Tests" />
+  </ItemGroup>
+
+</Project>

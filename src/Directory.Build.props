@@ -1,0 +1,13 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <SharedSourceRoot>$(MSBuildThisFileDirectory)Shared/</SharedSourceRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Cross-cutting infrastructure is compiled into every package rather than shipped as a shared package,
+         so it stays internal and packages never depend on each other (design section 3.1). -->
+    <Compile Include="$(SharedSourceRoot)**/*.cs" LinkBase="Shared" />
+  </ItemGroup>
+</Project>

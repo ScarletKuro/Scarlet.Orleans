@@ -1,0 +1,19 @@
+using Scarlet.Orleans.Relational;
+
+namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
+
+internal static class EntityFrameworkEngines
+{
+    /// <summary>
+    /// Maps an EF Core provider name to its engine, by name, so no EF provider package is referenced.
+    /// </summary>
+    public static RelationalEngine FromProviderName(string? providerName) => providerName switch
+    {
+        "Microsoft.EntityFrameworkCore.SqlServer" => RelationalEngine.SqlServer,
+        "Npgsql.EntityFrameworkCore.PostgreSQL" => RelationalEngine.PostgreSql,
+        "Pomelo.EntityFrameworkCore.MySql" or "MySql.EntityFrameworkCore" => RelationalEngine.MySql,
+        "Microsoft.EntityFrameworkCore.Sqlite" => RelationalEngine.Sqlite,
+        _ => throw new NotSupportedException(
+            $"EF Core provider \"{providerName}\" is not supported. Supported providers: Microsoft.EntityFrameworkCore.SqlServer, Npgsql.EntityFrameworkCore.PostgreSQL, Pomelo.EntityFrameworkCore.MySql, MySql.EntityFrameworkCore, Microsoft.EntityFrameworkCore.Sqlite."),
+    };
+}
