@@ -1,8 +1,13 @@
 namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
 
 /// <summary>
-/// What the provider does with the database schema when the silo starts.
+/// What the provider checks about the database schema when the silo starts.
 /// </summary>
+/// <remarks>
+/// The application's EF Core migrations create and evolve the Orleans tables, after
+/// <c>modelBuilder.ApplyOrleansPersistenceModel()</c> and <c>migrationBuilder.ApplyOrleansPersistenceSchema(version)</c>.
+/// The provider never changes the schema itself.
+/// </remarks>
 public enum SchemaMode
 {
     /// <summary>
@@ -11,13 +16,8 @@ public enum SchemaMode
     None,
 
     /// <summary>
-    /// Checks the schema history and fails startup, listing the scripts to run, if the schema is missing or outdated.
+    /// Checks the schema history and fails startup if the recorded schema version is missing or outside the range this
+    /// package supports.
     /// </summary>
     Validate,
-
-    /// <summary>
-    /// Creates the schema or applies pending migration scripts. Needs DDL permissions. Only for Orleans tables that are
-    /// not managed by the application's EF Core migrations.
-    /// </summary>
-    Apply,
 }

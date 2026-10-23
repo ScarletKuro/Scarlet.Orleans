@@ -9,6 +9,8 @@
   <ItemGroup>
     <Compile Include="..\Shared\**\*.cs" LinkBase="Shared" />
     <Using Include="Xunit" />
+    <!-- The ADO.NET flavour's scripts, which the EF Core model must reproduce exactly. -->
+    <None Include="..\..\..\src\Persistence\Shared\Schema\*.sql" Link="Schema\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

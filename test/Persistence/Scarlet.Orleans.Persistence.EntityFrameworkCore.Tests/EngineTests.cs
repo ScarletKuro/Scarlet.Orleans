@@ -6,11 +6,8 @@ public sealed class PostgreSqlGrainStorageTests(PostgreSqlDatabaseFixture fixtur
 
 public sealed class SqlServerGrainStorageTests(SqlServerDatabaseFixture fixture) : GrainStorageConformanceTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
 
-public sealed class SqliteSchemaManagementTests(SqliteDatabaseFixture fixture) : SchemaManagementTests(fixture), IClassFixture<SqliteDatabaseFixture>;
 
-public sealed class PostgreSqlSchemaManagementTests(PostgreSqlDatabaseFixture fixture) : SchemaManagementTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
 
-public sealed class SqlServerSchemaManagementTests(SqlServerDatabaseFixture fixture) : SchemaManagementTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
 
 public sealed class SqliteModelTests(SqliteDatabaseFixture fixture) : ModelTests(fixture), IClassFixture<SqliteDatabaseFixture>;
 
@@ -24,11 +21,8 @@ public sealed class MariaDbGrainStorageTests(MariaDbDatabaseFixture fixture) : G
 
 public sealed class MySqlDataGrainStorageTests(MySqlDataDatabaseFixture fixture) : GrainStorageConformanceTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
 
-public sealed class MySqlSchemaManagementTests(MySqlDatabaseFixture fixture) : SchemaManagementTests(fixture), IClassFixture<MySqlDatabaseFixture>;
 
-public sealed class MariaDbSchemaManagementTests(MariaDbDatabaseFixture fixture) : SchemaManagementTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
-public sealed class MySqlDataSchemaManagementTests(MySqlDataDatabaseFixture fixture) : SchemaManagementTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
 
 public sealed class MySqlModelTests(MySqlDatabaseFixture fixture) : ModelTests(fixture), IClassFixture<MySqlDatabaseFixture>;
 

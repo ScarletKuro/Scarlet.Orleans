@@ -1,35 +1,31 @@
-using System.Data.Common;
+using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using Scarlet.Orleans.Relational;
+using Scarlet.Orleans.Relational.Schema;
 
 namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
 
 /// <summary>
-/// Grain state operations through EF Core, each one set-based statement.
+/// Grain state operations through EF Core APIs only, so any relational EF Core provider works and none is special-cased.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The insert runs the shared SQL of both flavours (<see cref="GrainStateSql.Insert"/>), because EF Core cannot
-/// express an insert that tolerates an existing key without an exception the engine may not let us classify.
-/// </para>
-/// <para>
 /// Every operation uses its own short-lived context, because Orleans calls storage concurrently and a
-/// <see cref="DbContext"/> is not thread-safe. Updates and deletes use <c>ExecuteUpdate</c> and <c>ExecuteDelete</c>,
-/// so the change tracker never turns a conditional write into a read followed by a write.
+/// <see cref="DbContext"/> is not thread-safe. Each write is one statement: an insert through <c>SaveChanges</c>, and
+/// conditional updates and deletes through <c>ExecuteUpdate</c> and <c>ExecuteDelete</c>, so the change tracker never
+/// turns a conditional write into a read followed by a write.
 /// </para>
 /// <para>
-/// Writes run in a <see cref="SingleAttemptExecutionStrategy"/>, so a retrying execution strategy configured on the
-/// application's context never repeats them. A repeat after a commit whose acknowledgement was lost would match no row
-/// and turn a successful write into a conflict. Reads keep the application's strategy, since repeating them is safe.
+/// Transient errors are retried by the execution strategy configured on the context, if any. A repeated insert or update
+/// whose first attempt committed reports that it matched nothing, which <see cref="RelationalGrainStorage"/> settles from
+/// the ETag it generated. A repeated delete cannot be settled that way, because a deleted row leaves no ETag behind, so
+/// deletes run in a <see cref="SingleAttemptExecutionStrategy"/>.
 /// </para>
 /// </remarks>
-internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFactory<TContext> contextFactory, SchemaMode schemaMode, TimeProvider timeProvider)
+internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFactory<TContext> contextFactory, SchemaMode schemaMode)
     : IGrainStateStore
     where TContext : DbContext
 {
-    private RelationalEngine engine;
-
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
@@ -39,97 +35,148 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(IDbContextFac
                 $"{typeof(TContext).Name} does not map the Orleans grain state table. Call modelBuilder.{nameof(ScarletPersistenceModelBuilderExtensions.ApplyOrleansPersistenceModel)}() in OnModelCreating.");
         }
 
-        engine = EntityFrameworkEngines.FromProviderName(context.Database.ProviderName);
-        if (schemaMode == SchemaMode.None)
+        if (schemaMode == SchemaMode.Validate)
         {
-            return;
-        }
-
-        await context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await PersistenceSchema.CreateMigrator(engine)
-                .EnsureAsync(context.Database.GetDbConnection(), apply: schemaMode == SchemaMode.Apply, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            await context.Database.CloseConnectionAsync().ConfigureAwait(false);
+            await ValidateSchemaAsync(context, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    public Task<StoredGrainState?> ReadAsync(GrainStateKey key, CancellationToken cancellationToken) =>
-        TransientRetry.ExecuteAsync(engine, timeProvider, async ct =>
-        {
-            await using var context = await contextFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-            var hash = key.Hash;
-            return await context.Set<GrainStateRecord>()
-                .AsNoTracking()
-                .Where(r => r.KeyHash == hash)
-                .Select(r => new StoredGrainState(r.GrainIdentity, r.Payload, r.ETag))
-                .SingleOrDefaultAsync(ct)
-                .ConfigureAwait(false);
-        }, cancellationToken);
+    public async Task<StoredGrainState?> ReadAsync(GrainStateKey key, CancellationToken cancellationToken)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var hash = key.Hash;
+        return await context.Set<GrainStateRecord>()
+            .AsNoTracking()
+            .Where(r => r.KeyHash == hash)
+            .Select(r => new StoredGrainState(r.GrainIdentity, r.Payload, r.ETag))
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
 
-    public Task<bool> TryInsertAsync(GrainStateKey key, byte[] payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken) =>
-        TransientRetry.ExecuteAsync(engine, timeProvider, async ct =>
+    public async Task<bool> TryInsertAsync(GrainStateKey key, byte[] payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken)
+    {
+        DbUpdateException failure;
+        await using (var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
         {
-            await using var context = await contextFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-
-            // The parameters are built on a scratch command of the provider's connection, then handed to EF, so the
-            // statement still goes through EF's logging and interceptors.
-            DbParameter[] parameters;
-            await using (var scratch = context.Database.GetDbConnection().CreateCommand())
+            context.Set<GrainStateRecord>().Add(new GrainStateRecord
             {
-                GrainStateSql.AddInsertParameters(scratch, key, payload, etag, modifiedOn);
-                parameters = scratch.Parameters.Cast<DbParameter>().ToArray();
-                scratch.Parameters.Clear();
-            }
+                KeyHash = key.Hash,
+                GrainIdentity = key.Identity,
+                ServiceId = key.ServiceIdText,
+                StateName = key.StateNameText,
+                GrainId = key.GrainIdText,
+                Payload = payload,
+                ETag = etag,
+                ModifiedOn = modifiedOn.UtcDateTime,
+            });
 
             try
             {
-                return await new SingleAttemptExecutionStrategy(context)
-                    .ExecuteAsync(c => context.Database.ExecuteSqlRawAsync(GrainStateSql.Insert(engine), parameters, c), ct)
-                    .ConfigureAwait(false) == 1;
+                await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                return true;
             }
-            catch (DbException exception) when (DbErrors.IsDuplicateKey(engine, exception))
+            catch (DbUpdateException exception)
             {
-                return false;
+                failure = exception;
             }
-        }, cancellationToken);
+        }
 
-    public Task<bool> TryUpdateAsync(GrainStateKey key, byte[] expectedETag, byte[]? payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken) =>
-        TransientRetry.ExecuteAsync(engine, timeProvider, async ct =>
+        // Recognising a duplicate key from the exception would take each provider's error codes. A row now existing
+        // under the key identifies it without them; any other failure is rethrown.
+        if (await ExistsAsync(key, cancellationToken).ConfigureAwait(false))
         {
-            await using var context = await contextFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-            var modifiedOnUtc = modifiedOn.UtcDateTime;
-            var updated = await new SingleAttemptExecutionStrategy(context)
-                .ExecuteAsync(
-                    c => Match(context, key, expectedETag).ExecuteUpdateAsync(
-                        setters => setters
-                            .SetProperty(r => r.Payload, payload)
-                            .SetProperty(r => r.ETag, etag)
-                            .SetProperty(r => r.ModifiedOn, modifiedOnUtc),
-                        c),
-                    ct)
-                .ConfigureAwait(false);
-            return updated == 1;
-        }, cancellationToken);
+            return false;
+        }
 
-    public Task<bool> TryDeleteAsync(GrainStateKey key, byte[] expectedETag, CancellationToken cancellationToken) =>
-        TransientRetry.ExecuteAsync(engine, timeProvider, async ct =>
-        {
-            await using var context = await contextFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-            return await new SingleAttemptExecutionStrategy(context)
-                .ExecuteAsync(c => Match(context, key, expectedETag).ExecuteDeleteAsync(c), ct)
-                .ConfigureAwait(false) == 1;
-        }, cancellationToken);
+        ExceptionDispatchInfo.Throw(failure);
+        return false;
+    }
+
+    public async Task<bool> TryUpdateAsync(GrainStateKey key, byte[] expectedETag, byte[]? payload, byte[] etag, DateTimeOffset modifiedOn, CancellationToken cancellationToken)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var modifiedOnUtc = modifiedOn.UtcDateTime;
+        var updated = await Match(context, key, expectedETag)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(r => r.Payload, payload)
+                    .SetProperty(r => r.ETag, etag)
+                    .SetProperty(r => r.ModifiedOn, modifiedOnUtc),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return updated == 1;
+    }
+
+    public async Task<bool> TryDeleteAsync(GrainStateKey key, byte[] expectedETag, CancellationToken cancellationToken)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await new SingleAttemptExecutionStrategy(context)
+            .ExecuteAsync(c => Match(context, key, expectedETag).ExecuteDeleteAsync(c), cancellationToken)
+            .ConfigureAwait(false) == 1;
+    }
+
+    private async Task<bool> ExistsAsync(GrainStateKey key, CancellationToken cancellationToken)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var hash = key.Hash;
+        return await context.Set<GrainStateRecord>().AnyAsync(r => r.KeyHash == hash, cancellationToken).ConfigureAwait(false);
+    }
 
     private static IQueryable<GrainStateRecord> Match(TContext context, GrainStateKey key, byte[] expectedETag)
     {
         var hash = key.Hash;
         var identity = key.Identity;
         return context.Set<GrainStateRecord>().Where(r => r.KeyHash == hash && r.GrainIdentity == identity && r.ETag == expectedETag);
+    }
+
+    /// <summary>
+    /// Checks the versions recorded in <c>orleans_schema_history</c>, whichever flavour recorded them.
+    /// </summary>
+    private static async Task ValidateSchemaAsync(TContext context, CancellationToken cancellationToken)
+    {
+        List<int> versions;
+        try
+        {
+            versions = await SchemaHistoryModel.Set(context)
+                .Where(row => EF.Property<string>(row, SchemaHistoryModel.Component) == PersistenceSchema.Component)
+                .Select(row => EF.Property<int>(row, SchemaHistoryModel.Version))
+                .OrderBy(version => version)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            throw new SchemaVersionException(
+                $"Cannot read the {PersistenceSchema.Component} schema history. Create the Orleans tables with an EF Core migration that calls migrationBuilder.{nameof(ScarletPersistenceModelBuilderExtensions.ApplyOrleansPersistenceSchema)}({PersistenceSchema.LatestVersion}).",
+                exception);
+        }
+
+        if (versions.Count == 0)
+        {
+            throw new SchemaVersionException(
+                $"No {PersistenceSchema.Component} schema version is recorded. Call migrationBuilder.{nameof(ScarletPersistenceModelBuilderExtensions.ApplyOrleansPersistenceSchema)}({PersistenceSchema.LatestVersion}) in the migration that creates the Orleans tables.");
+        }
+
+        for (var i = 0; i < versions.Count; i++)
+        {
+            if (versions[i] != i + 1)
+            {
+                throw new SchemaVersionException($"The {PersistenceSchema.Component} schema history is missing version {i + 1}.");
+            }
+        }
+
+        var current = versions[^1];
+        if (current > PersistenceSchema.LatestVersion)
+        {
+            throw new SchemaVersionException(
+                $"The {PersistenceSchema.Component} schema is at version {current}, newer than the latest version {PersistenceSchema.LatestVersion} this code supports. Upgrade the package.");
+        }
+
+        if (current < PersistenceSchema.MinimumVersion)
+        {
+            throw new SchemaVersionException(
+                $"The {PersistenceSchema.Component} schema is at version {current}, and this code needs at least version {PersistenceSchema.MinimumVersion}. Add an EF Core migration that calls migrationBuilder.{nameof(ScarletPersistenceModelBuilderExtensions.ApplyOrleansPersistenceSchema)}({PersistenceSchema.MinimumVersion}).");
+        }
     }
 
     /// <summary>

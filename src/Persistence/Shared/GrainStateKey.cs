@@ -67,5 +67,20 @@ internal sealed class GrainStateKey
         }
     }
 
+    /// <summary>The service ID as storable display text (<see cref="DisplayText"/>).</summary>
+    public string ServiceIdText => DisplayText(ServiceId);
+
+    /// <summary>The state name as storable display text (<see cref="DisplayText"/>).</summary>
+    public string StateNameText => DisplayText(StateName);
+
+    /// <summary>The grain ID as storable display text (<see cref="DisplayText"/>).</summary>
+    public string GrainIdText => DisplayText(GrainId.ToString());
+
     public override string ToString() => $"ServiceId={ServiceId} StateName={StateName} GrainId={GrainId}";
+
+    /// <summary>
+    /// Makes an identity part storable in a text column. PostgreSQL rejects NUL in text values, and identities may hold
+    /// any byte, so NUL is written as <c>\0</c>. The text is never compared; identity lives in <see cref="Identity"/>.
+    /// </summary>
+    private static string DisplayText(string value) => value.Replace("\0", "\\0", StringComparison.Ordinal);
 }

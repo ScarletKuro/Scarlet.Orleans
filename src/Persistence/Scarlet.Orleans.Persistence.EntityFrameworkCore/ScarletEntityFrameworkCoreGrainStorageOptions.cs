@@ -6,11 +6,14 @@ namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
 /// <summary>
 /// Options for EF Core grain storage.
 /// </summary>
+/// <remarks>
+/// Retries of transient database errors come from the execution strategy configured on the context, for example
+/// <c>EnableRetryOnFailure</c>. Inserts and updates are safe to repeat; deletes run exactly once.
+/// </remarks>
 public sealed class ScarletEntityFrameworkCoreGrainStorageOptions : IStorageProviderSerializerOptions
 {
     /// <summary>
-    /// What to do with the schema at startup. Defaults to <see cref="SchemaMode.Validate"/>, which is also the mode to
-    /// use when the application's own EF Core migrations create the Orleans tables.
+    /// What to check about the schema at startup. Defaults to <see cref="SchemaMode.Validate"/>.
     /// </summary>
     public SchemaMode SchemaMode { get; set; } = SchemaMode.Validate;
 

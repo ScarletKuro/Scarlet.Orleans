@@ -205,4 +205,4 @@ internal sealed class SchemaMigrator(string component, RelationalEngine engine, 
 /// <summary>
 /// The database schema does not match what this code supports.
 /// </summary>
-internal sealed class SchemaVersionException(string message) : InvalidOperationException(message);
+internal sealed class SchemaVersionException(string message, Exception? innerException = null) : InvalidOperationException(message, innerException);

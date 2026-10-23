@@ -29,3 +29,17 @@ public sealed class GrainStateKeyTests
         Assert.ThrowsAny<ArgumentException>(() => GrainStateKey.Create("service", "state\uD800", GrainId.Create("type", "key")));
     }
 }
+
+public sealed class SchemaScriptTests
+{
+    public static TheoryData<string> Engines => [.. Scarlet.Orleans.Relational.RelationalEngines.Names];
+
+    [Theory]
+    [MemberData(nameof(Engines))]
+    public void EveryEngine_ShipsOneScriptPerSchemaVersion(string engine)
+    {
+        var scripts = Scarlet.Orleans.Relational.Schema.SchemaScript.Load(typeof(PersistenceSchema).Assembly, Scarlet.Orleans.Relational.RelationalEngines.Parse(engine));
+
+        Assert.Equal(Enumerable.Range(1, PersistenceSchema.LatestVersion), scripts.Select(script => script.Version));
+    }
+}

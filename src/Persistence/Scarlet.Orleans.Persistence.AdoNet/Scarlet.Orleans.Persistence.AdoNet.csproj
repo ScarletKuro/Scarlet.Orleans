@@ -9,6 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\Shared\Schema\*.sql" LogicalName="%(Filename)%(Extension)" />
+    <None Include="..\Shared\Schema\*.sql" Pack="true" PackagePath="schema/" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Orleans.Runtime" />
     <PackageReference Include="System.IO.Hashing" />
   </ItemGroup>
