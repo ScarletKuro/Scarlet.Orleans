@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Scarlet.Orleans.Persistence.AdoNet.Tests" />
+    <InternalsVisibleTo Include="Scarlet.Orleans.Persistence.AdoNet.NativeAotTests" />
   </ItemGroup>
 
 </Project>

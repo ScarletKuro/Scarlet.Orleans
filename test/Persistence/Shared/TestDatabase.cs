@@ -101,7 +101,9 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
             "Sqlite" => CreateSqlite(name),
             "PostgreSql" => await CreatePostgreSqlAsync(name),
             "SqlServer" => await CreateSqlServerAsync(name),
+#if !SCARLET_AOT_TESTS
             "MySql" or "MariaDb" when Driver == TestDrivers.MySqlData => await CreateMySqlDataAsync(name),
+#endif
             "MySql" or "MariaDb" => await CreateMySqlAsync(name),
             _ => throw new NotSupportedException(Engine),
         };
@@ -175,6 +177,7 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
         });
     }
 
+#if !SCARLET_AOT_TESTS
     private async Task<TestDatabase> CreateMySqlDataAsync(string name)
     {
         var factory = MySql.Data.MySqlClient.MySqlClientFactory.Instance;
@@ -186,6 +189,7 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
             return ExecuteAdminAsync(factory, $"DROP DATABASE IF EXISTS `{name}`");
         });
     }
+#endif
 
 
     private async Task ExecuteAdminAsync(DbProviderFactory factory, string sql)
@@ -206,7 +210,10 @@ public sealed class MySqlDatabaseFixture() : DatabaseFixture("MySql");
 
 public sealed class MariaDbDatabaseFixture() : DatabaseFixture("MariaDb");
 
+#if !SCARLET_AOT_TESTS
+// Oracle's MySql.Data relies on reflection, so the NativeAOT tests run MySQL through MySqlConnector only.
 public sealed class MySqlDataDatabaseFixture() : DatabaseFixture("MySql", TestDrivers.MySqlData);
+#endif
 
 public static class TestDrivers
 {

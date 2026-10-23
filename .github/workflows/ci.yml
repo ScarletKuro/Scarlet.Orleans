@@ -158,3 +158,52 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION
+
+  native-aot:
+    name: NativeAOT, all engines
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The ADO.NET suites, published as a native executable and run against every engine at once (design section 4.11).
+    # Silo tests are not included: an Orleans 10.4 silo cannot start under NativeAOT.
+    services:
+      postgres:
+        image: postgres:17.11@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
+        env:
+          POSTGRES_PASSWORD: scarlet-test-1
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Scarlet-Test-1
+        ports: ["1433:1433"]
+      mysql:
+        image: mysql:8.4.13@sha256:76f0358884cb92d9a086d24e5671c38048d3fef40f2588703d73eb55392d6b69
+        env:
+          MYSQL_ROOT_PASSWORD: scarlet-test-1
+        ports: ["3306:3306"]
+        options: --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pscarlet-test-1" --health-interval 5s --health-timeout 5s --health-retries 30
+      mariadb:
+        image: mariadb:11.4.13@sha256:250e1609e93c0e6aecf64bfbab2d84d5e89d2481540fe77447ff6c855c3b1873
+        env:
+          MARIADB_ROOT_PASSWORD: scarlet-test-1
+        ports: ["3307:3306"]
+        options: --health-cmd "healthcheck.sh --connect --innodb_initialized" --health-interval 5s --health-timeout 5s --health-retries 30
+    env:
+      SCARLET_TEST_POSTGRESQL: Host=localhost;Port=5432;Username=postgres;Password=scarlet-test-1
+      SCARLET_TEST_SQLSERVER: Server=localhost,1433;User ID=sa;Password=Scarlet-Test-1;TrustServerCertificate=True
+      SCARLET_TEST_MYSQL: Server=127.0.0.1;Port=3306;User ID=root;Password=scarlet-test-1;AllowPublicKeyRetrieval=True
+      SCARLET_TEST_MARIADB: Server=127.0.0.1;Port=3307;User ID=root;Password=scarlet-test-1
+      SCARLET_TEST_REQUIRE: PostgreSql,SqlServer,MySql,MariaDb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish
+        run: dotnet publish test/Persistence/Scarlet.Orleans.Persistence.AdoNet.NativeAotTests -c $CONFIGURATION -r linux-x64 -o artifacts/aot-tests
+      - name: Wait for SQL Server
+        run: timeout 120 bash -c 'until docker logs "${{ job.services.sqlserver.id }}" 2>&1 | grep -q "SQL Server is now ready for client connections"; do sleep 2; done'
+      - name: Run
+        run: ./artifacts/aot-tests/Scarlet.Orleans.Persistence.AdoNet.NativeAotTests

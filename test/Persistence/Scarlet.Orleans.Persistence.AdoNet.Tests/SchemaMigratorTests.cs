@@ -73,6 +73,7 @@ public abstract class SchemaMigratorTests(DatabaseFixture fixture)
     [Fact]
     public async Task Apply_WhenAScriptFails_RecordsNothing()
     {
+        await ExecuteAsync(SchemaLedger.CreateTable(Engine));
         var failing = Script(1, $"CREATE TABLE m1_{suffix} (id int); SELECT * FROM missing_{suffix}");
 
         await Assert.ThrowsAnyAsync<Exception>(() => EnsureAsync(apply: true, minimumVersion: 1, failing));

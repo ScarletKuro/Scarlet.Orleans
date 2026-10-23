@@ -9,6 +9,7 @@
     <Project Path="test/External/Orleans.Persistence.TestKit/Orleans.Persistence.TestKit.csproj" />
   </Folder>
   <Folder Name="/test/Persistence/">
+    <Project Path="test/Persistence/Scarlet.Orleans.Persistence.AdoNet.NativeAotTests/Scarlet.Orleans.Persistence.AdoNet.NativeAotTests.csproj" />
     <Project Path="test/Persistence/Scarlet.Orleans.Persistence.AdoNet.Tests/Scarlet.Orleans.Persistence.AdoNet.Tests.csproj" />
     <Project Path="test/Persistence/Scarlet.Orleans.Persistence.EntityFrameworkCore.Tests/Scarlet.Orleans.Persistence.EntityFrameworkCore.Tests.csproj" />
   </Folder>

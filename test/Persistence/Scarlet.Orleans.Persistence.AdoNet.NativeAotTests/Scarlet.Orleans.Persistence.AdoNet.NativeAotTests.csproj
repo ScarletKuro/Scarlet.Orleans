@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The ADO.NET suites compiled as NativeAOT: dotnet publish, then run the executable (design section 4.11). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <PublishAot>true</PublishAot>
+    <DefineConstants>$(DefineConstants);SCARLET_AOT_TESTS</DefineConstants>
+    <!-- The reflection-mode xUnit package suppresses CA1822 for test methods; the AOT package does not. -->
+    <NoWarn>$(NoWarn);CA1707;CA1822;CA2007</NoWarn>
+    <!-- Orleans and SqlClient produce trim and AOT warnings of their own, reported once per assembly. They stay warnings,
+         and this repository's assemblies are excluded from that grouping (see the target below). -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2104;IL3053</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- No silo tests: an Orleans 10.4 silo cannot start under NativeAOT, because it resolves serializer codecs as
+         open generics over value types from DI (IFieldCodec<ImmutableArray<GrainManifest>>). -->
+    <Compile Include="..\Shared\CancellationTests.cs" LinkBase="Shared" />
+    <Compile Include="..\Shared\GrainStorageConformanceTests.cs" LinkBase="Shared" />
+    <Compile Include="..\Shared\SchemaManagementTests.cs" LinkBase="Shared" />
+    <Compile Include="..\Shared\TestDatabase.cs" LinkBase="Shared" />
+    <Compile Include="..\Shared\TestDoubles.cs" LinkBase="Shared" />
+    <Compile Include="..\Scarlet.Orleans.Persistence.AdoNet.Tests\FlavourStorage.cs" LinkBase="AdoNet" />
+    <Compile Include="..\Scarlet.Orleans.Persistence.AdoNet.Tests\GrainStateKeyTests.cs" LinkBase="AdoNet" />
+    <Compile Include="..\Scarlet.Orleans.Persistence.AdoNet.Tests\SchemaMigratorTests.cs" LinkBase="AdoNet" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Persistence\Scarlet.Orleans.Persistence.AdoNet\Scarlet.Orleans.Persistence.AdoNet.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3.aot" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="MySqlConnector" />
+  </ItemGroup>
+
+  <!-- Every warning in this repository's assemblies is reported individually, with its own code, so it stays an error. -->
+  <Target Name="ReportScarletAotWarningsIndividually" AfterTargets="_ComputeManagedAssemblyForILLink">
+    <ItemGroup>
+      <ManagedAssemblyToLink Condition="$([System.String]::Copy('%(Filename)').StartsWith('Scarlet.'))">
+        <TrimmerSingleWarn>false</TrimmerSingleWarn>
+      </ManagedAssemblyToLink>
+    </ItemGroup>
+  </Target>
+
+</Project>
