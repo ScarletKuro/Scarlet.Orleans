@@ -13,8 +13,8 @@ internal static class DbErrors
     /// </summary>
     /// <remarks>
     /// <para>
-    /// MySQL reports every integrity violation as SQLSTATE 23000, so callers only use this for inserts whose sole
-    /// possible violation is the key: every other column is supplied and unconstrained.
+    /// MySqlConnector reports every integrity violation as SQLSTATE 23000, so callers only use this for inserts whose
+    /// sole possible violation is the key: every other column is supplied and unconstrained.
     /// </para>
     /// <para>
     /// Microsoft.Data.Sqlite exposes its result code only on its own exception type, so SQLite errors cannot be
@@ -24,7 +24,8 @@ internal static class DbErrors
     public static bool IsDuplicateKey(RelationalEngine engine, DbException exception) => engine switch
     {
         RelationalEngine.PostgreSql => exception.SqlState == "23505",
-        RelationalEngine.MySql or RelationalEngine.MariaDb => exception.SqlState == "23000",
+        // ER_DUP_ENTRY
+        RelationalEngine.MySql or RelationalEngine.MariaDb => exception.SqlState == "23000" || MySqlErrorNumber(exception) == 1062,
         RelationalEngine.SqlServer => SqlServerErrorNumber(exception) is 2601 or 2627,
         _ => false,
     };
@@ -42,7 +43,7 @@ internal static class DbErrors
         // serialization_failure, deadlock_detected
         RelationalEngine.PostgreSql => exception.SqlState is "40001" or "40P01",
         // ER_LOCK_DEADLOCK rolls back the whole transaction and reports SQLSTATE 40001.
-        RelationalEngine.MySql or RelationalEngine.MariaDb => exception.SqlState == "40001",
+        RelationalEngine.MySql or RelationalEngine.MariaDb => exception.SqlState == "40001" || MySqlErrorNumber(exception) == 1213,
         // Chosen as deadlock victim.
         RelationalEngine.SqlServer => SqlServerErrorNumber(exception) == 1205,
         _ => false,
@@ -56,4 +57,11 @@ internal static class DbErrors
         exception.Data["HelpLink.EvtID"] is string number && int.TryParse(number, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
             ? value
             : null;
+
+    /// <summary>
+    /// MySql.Data leaves <see cref="DbException.SqlState"/> empty for errors returned by the server, but records the
+    /// error number in <see cref="Exception.Data"/>. MySqlConnector populates <see cref="DbException.SqlState"/> instead.
+    /// </summary>
+    private static int? MySqlErrorNumber(DbException exception) =>
+        exception.Data["Server Error Code"] is int number ? number : null;
 }
