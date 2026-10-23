@@ -31,8 +31,10 @@ public sealed class ScarletEntityFrameworkCoreGrainStorageOptions : IStorageProv
     /// MySqlConnector, MySql.Data and Microsoft.Data.Sqlite are recognised, as is the standard SQLSTATE 23505 of any driver.
     /// </summary>
     /// <remarks>
-    /// When set, this rule alone decides. A duplicate key it does not recognise surfaces as the driver's error, rather than
-    /// as <see cref="global::Orleans.Storage.InconsistentStateException"/>. For a driver that is not recognised and this
+    /// When set, this rule alone decides, so it must match only errors that report a duplicate primary or unique key. A
+    /// duplicate key it does not recognise surfaces as the driver's error, rather than as
+    /// <see cref="global::Orleans.Storage.InconsistentStateException"/>. Any other error it matches is hidden: the insert
+    /// is reported as a conflict, and the original error is lost. For a driver that is not recognised and this
     /// rule is not set, the provider checks for a row under the key after the failure: if one exists, the insert could
     /// not have succeeded and is reported as a conflict; if none does, the driver's error surfaces. A conflicting row
     /// deleted in between therefore surfaces as the driver's error rather than as a conflict, which this rule avoids.
