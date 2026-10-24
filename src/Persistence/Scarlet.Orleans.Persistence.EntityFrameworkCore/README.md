@@ -57,6 +57,10 @@ Tested: SQL Server, Npgsql, SQLite, and for MySQL [Microting](https://www.nuget.
 best-effort basis: their duplicate-key errors are recognised by the standard SQLSTATE `23505`, or by your own
 `IsDuplicateKeyError` rule; otherwise the provider checks for the conflicting row after a failed insert.
 
+`MySql.EntityFrameworkCore` runs on Oracle's MySql.Data, which has a known bug: concurrent TLS connection opens can
+corrupt its state, after which every open in the process fails. Prefer Microting's provider; see the
+[repository](https://github.com/ScarletKuro/Scarlet.Orleans#supported-databases).
+
 ## Behaviour
 
 Every write checks the grain's ETag and fails with `InconsistentStateException` if another activation wrote first.

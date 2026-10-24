@@ -98,6 +98,12 @@ for the conflicting row after a failed insert.
 against every engine in CI. An Orleans 10.4 silo itself cannot start under NativeAOT yet, so this guarantee matters once
 Orleans supports it. MySql.Data relies on reflection and works under JIT only; use MySqlConnector for AOT.
 
+**MySql.Data over TLS.** Oracle's MySql.Data 26.10 sets up TLS connections through a dictionary it shares without
+synchronisation. Many connections opening at once, as when a silo starts under load, can corrupt it, after which every
+connection open in the process fails until restart. This is a driver bug, not one in these providers. Prefer
+MySqlConnector, which does not have it, or with MySql.Data connect without TLS on a trusted network.
+`MySql.EntityFrameworkCore` runs on MySql.Data, so it is affected too; Microting's provider, on MySqlConnector, is not.
+
 ## Performance
 
 On the same machine and databases, the ADO.NET persistence flavour matches or beats the in-box Orleans ADO.NET

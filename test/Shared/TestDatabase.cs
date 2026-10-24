@@ -178,15 +178,24 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
     }
 
 #if !SCARLET_AOT_TESTS
+    /// <remarks>
+    /// MySql.Data 26.10 opens TLS connections through a dictionary shared without synchronisation, which concurrent
+    /// opens corrupt, after which every open in the process fails. The tests connect without TLS, and administer the
+    /// server through MySqlConnector, so that driver bug cannot fail them.
+    /// </remarks>
     private async Task<TestDatabase> CreateMySqlDataAsync(string name)
     {
-        var factory = MySql.Data.MySqlClient.MySqlClientFactory.Instance;
-        await ExecuteAdminAsync(factory, $"CREATE DATABASE `{name}`");
-        var connectionString = new MySql.Data.MySqlClient.MySqlConnectionStringBuilder(AdminConnectionString!) { Database = name }.ToString();
-        return new TestDatabase(Engine, Driver, connectionString, factory.CreateDataSource(connectionString), () =>
+        await ExecuteAdminAsync(MySqlConnectorFactory.Instance, $"CREATE DATABASE `{name}`");
+        var connectionString = new MySql.Data.MySqlClient.MySqlConnectionStringBuilder(AdminConnectionString!)
+        {
+            Database = name,
+            SslMode = MySql.Data.MySqlClient.MySqlSslMode.Disabled,
+            AllowPublicKeyRetrieval = true,
+        }.ToString();
+        return new TestDatabase(Engine, Driver, connectionString, MySql.Data.MySqlClient.MySqlClientFactory.Instance.CreateDataSource(connectionString), () =>
         {
             MySql.Data.MySqlClient.MySqlConnection.ClearAllPools();
-            return ExecuteAdminAsync(factory, $"DROP DATABASE IF EXISTS `{name}`");
+            return ExecuteAdminAsync(MySqlConnectorFactory.Instance, $"DROP DATABASE IF EXISTS `{name}`");
         });
     }
 #endif

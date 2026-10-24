@@ -29,6 +29,10 @@ Instead of `options.DataSource`, the provider resolves a `DbDataSource` from dep
 `options.DataSourceServiceKey` if set. The engine is inferred from the driver; set `options.Engine = "MariaDb"` for
 MariaDB, which shares MySqlConnector with MySQL.
 
+Oracle's MySql.Data has a known bug: concurrent TLS connection opens can corrupt its state, after which every open in
+the process fails. Prefer MySqlConnector; see the
+[repository](https://github.com/ScarletKuro/Scarlet.Orleans#supported-databases).
+
 ## Schema
 
 `SchemaMode` decides what happens at silo startup:
