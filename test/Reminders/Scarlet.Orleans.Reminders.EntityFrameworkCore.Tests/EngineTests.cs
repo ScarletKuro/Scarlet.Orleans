@@ -35,3 +35,27 @@ public sealed class MySqlReminderModelTests(MySqlDatabaseFixture fixture) : Remi
 public sealed class MariaDbReminderModelTests(MariaDbDatabaseFixture fixture) : ReminderModelTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
 public sealed class MySqlDataReminderModelTests(MySqlDataDatabaseFixture fixture) : ReminderModelTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class SqliteReminderServiceFixture() : ReminderServiceFixture(new SqliteDatabaseFixture());
+
+public sealed class SqliteReminderServiceTests(SqliteReminderServiceFixture fixture) : ReminderServiceTests(fixture), IClassFixture<SqliteReminderServiceFixture>;
+
+public sealed class PostgreSqlReminderServiceFixture() : ReminderServiceFixture(new PostgreSqlDatabaseFixture());
+
+public sealed class PostgreSqlReminderServiceTests(PostgreSqlReminderServiceFixture fixture) : ReminderServiceTests(fixture), IClassFixture<PostgreSqlReminderServiceFixture>;
+
+public sealed class SqlServerReminderServiceFixture() : ReminderServiceFixture(new SqlServerDatabaseFixture());
+
+public sealed class SqlServerReminderServiceTests(SqlServerReminderServiceFixture fixture) : ReminderServiceTests(fixture), IClassFixture<SqlServerReminderServiceFixture>;
+
+public sealed class MySqlReminderServiceFixture() : ReminderServiceFixture(new MySqlDatabaseFixture());
+
+public sealed class MySqlReminderServiceTests(MySqlReminderServiceFixture fixture) : ReminderServiceTests(fixture), IClassFixture<MySqlReminderServiceFixture>;
+
+public sealed class MariaDbReminderServiceFixture() : ReminderServiceFixture(new MariaDbDatabaseFixture());
+
+public sealed class MariaDbReminderServiceTests(MariaDbReminderServiceFixture fixture) : ReminderServiceTests(fixture), IClassFixture<MariaDbReminderServiceFixture>;
+
+public sealed class MySqlDataReminderServiceFixture() : ReminderServiceFixture(new MySqlDataDatabaseFixture());
+
+public sealed class MySqlDataReminderServiceTests(MySqlDataReminderServiceFixture fixture) : ReminderServiceTests(fixture), IClassFixture<MySqlDataReminderServiceFixture>;

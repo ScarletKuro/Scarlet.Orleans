@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Orleans.Hosting;
 using Scarlet.Orleans.Reminders.EntityFrameworkCore;
 
 namespace Scarlet.Orleans.Reminders.Tests;
@@ -35,6 +37,13 @@ internal static class FlavourTable
             TimeProvider.System,
             NullLogger.Instance);
         return schemaMode == TestSchemaMode.Apply ? new SchemaCreatingStore(database, store) : store;
+    }
+
+    public static void AddReminders(ISiloBuilder silo, TestDatabase database)
+    {
+        EnsureSchemaAsync(database, CancellationToken.None).GetAwaiter().GetResult();
+        silo.Services.AddDbContextFactory<TestDbContext>(options => Configure(options, database));
+        silo.UseScarletEntityFrameworkCoreReminderService<TestDbContext>();
     }
 
     /// <summary>
