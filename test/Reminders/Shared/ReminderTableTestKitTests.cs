@@ -8,24 +8,19 @@ namespace Scarlet.Orleans.Reminders.Tests;
 /// The Orleans reminders TestKit (vendored under <c>test/External</c>), run against each flavour and engine. Every test
 /// gets its own service ID, so tests share a database without seeing each other's reminders.
 /// </summary>
+/// <remarks>
+/// The table is created from <see cref="DatabaseFixture.Database"/>, which skips the test when the engine is not
+/// configured. That happens in the constructor, before any TestKit code runs: the TestKit retries failed operations and
+/// would turn the skip into a failure.
+/// </remarks>
 public abstract class ReminderTableTestKitTests(DatabaseFixture fixture)
-    : ReminderTableTestRunner(new RequiredEngineTable(fixture, $"service-{Guid.NewGuid():N}"), "Scarlet"), IAsyncLifetime
+    : ReminderTableTestRunner(FlavourTable.Create(fixture.Database, $"service-{Guid.NewGuid():N}", TestSchemaMode.Apply), "Scarlet"), IAsyncLifetime
 {
-    public async ValueTask InitializeAsync()
-    {
-        if (fixture.IsAvailable)
-        {
-            await ReminderTable.StartAsync(TestContext.Current.CancellationToken);
-        }
-    }
+    public async ValueTask InitializeAsync() => await ReminderTable.StartAsync(TestContext.Current.CancellationToken);
 
     public async ValueTask DisposeAsync()
     {
-        if (fixture.IsAvailable)
-        {
-            await ReminderTable.TestOnlyClearTable();
-        }
-
+        await ReminderTable.TestOnlyClearTable();
         GC.SuppressFinalize(this);
     }
 
@@ -88,6 +83,9 @@ public abstract class ReminderTableTestKitTests(DatabaseFixture fixture)
     public override Task ReminderTable_ReadRows_FullRange_ReturnsAllReminders() => base.ReminderTable_ReadRows_FullRange_ReturnsAllReminders();
 
     [Fact]
+    public override Task ReminderTable_ReadRows_UnsignedBoundary_UsesUInt32Ordering() => base.ReminderTable_ReadRows_UnsignedBoundary_UsesUInt32Ordering();
+
+    [Fact]
     public override Task ReminderTable_ReadRows_Range_ExcludesBeginAndIncludesEnd() => base.ReminderTable_ReadRows_Range_ExcludesBeginAndIncludesEnd();
 
     [Fact]
@@ -110,50 +108,4 @@ public abstract class ReminderTableTestKitTests(DatabaseFixture fixture)
 
     [Fact]
     public override Task ReminderTable_TestOnlyClearTable_RemovesAllReminders() => base.ReminderTable_TestOnlyClearTable_RemovesAllReminders();
-
-    /// <summary>
-    /// The table under test, created on first use, which skips the calling test when the engine is not configured.
-    /// </summary>
-    private sealed class RequiredEngineTable(DatabaseFixture fixture, string serviceId) : IReminderTable
-    {
-        private IReminderTable? table;
-
-        private IReminderTable Table
-        {
-            get
-            {
-                fixture.Require();
-                return table ??= FlavourTable.Create(fixture.Database, serviceId, TestSchemaMode.Apply);
-            }
-        }
-
-        public Task StartAsync(CancellationToken cancellationToken = default) => Table.StartAsync(cancellationToken);
-
-        public Task StopAsync(CancellationToken cancellationToken = default) => Table.StopAsync(cancellationToken);
-
-        public Task<ReminderTableData> ReadRows(GrainId grainId) => Table.ReadRows(grainId);
-
-        public Task<ReminderTableData> ReadRows(GrainId grainId, CancellationToken cancellationToken) => Table.ReadRows(grainId, cancellationToken);
-
-        public Task<ReminderTableData> ReadRows(uint begin, uint end) => Table.ReadRows(begin, end);
-
-        public Task<ReminderTableData> ReadRows(uint begin, uint end, CancellationToken cancellationToken) => Table.ReadRows(begin, end, cancellationToken);
-
-        public Task<ReminderEntry?> ReadRow(GrainId grainId, string reminderName) => Table.ReadRow(grainId, reminderName);
-
-        public Task<ReminderEntry?> ReadRow(GrainId grainId, string reminderName, CancellationToken cancellationToken) => Table.ReadRow(grainId, reminderName, cancellationToken);
-
-        public Task<string?> UpsertRow(ReminderEntry entry) => Table.UpsertRow(entry);
-
-        public Task<string?> UpsertRow(ReminderEntry entry, CancellationToken cancellationToken) => Table.UpsertRow(entry, cancellationToken);
-
-        public Task<bool> RemoveRow(GrainId grainId, string reminderName, string eTag) => Table.RemoveRow(grainId, reminderName, eTag);
-
-        public Task<bool> RemoveRow(GrainId grainId, string reminderName, string eTag, CancellationToken cancellationToken) =>
-            Table.RemoveRow(grainId, reminderName, eTag, cancellationToken);
-
-        public Task TestOnlyClearTable() => Table.TestOnlyClearTable();
-
-        public Task TestOnlyClearTable(CancellationToken cancellationToken) => Table.TestOnlyClearTable(cancellationToken);
-    }
 }
