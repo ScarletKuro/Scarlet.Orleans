@@ -17,6 +17,7 @@
     <!-- No silo tests: an Orleans 10.4 silo cannot start under NativeAOT, because it resolves serializer codecs as
          open generics over value types from DI (IFieldCodec<ImmutableArray<GrainManifest>>). -->
     <Compile Include="..\Shared\CancellationTests.cs" LinkBase="Shared" />
+    <Compile Include="..\Shared\ConnectionFailureTests.cs" LinkBase="Shared" />
     <Compile Include="..\Shared\DiagnosticsTests.cs" LinkBase="Shared" />
     <Compile Include="..\Shared\GrainStorageConformanceTests.cs" LinkBase="Shared" />
     <Compile Include="..\Shared\SchemaManagementTests.cs" LinkBase="Shared" />

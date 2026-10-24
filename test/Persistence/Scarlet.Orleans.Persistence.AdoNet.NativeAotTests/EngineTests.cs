@@ -31,3 +31,11 @@ public sealed class MySqlSchemaMigratorTests(MySqlDatabaseFixture fixture) : Sch
 public sealed class MariaDbSchemaMigratorTests(MariaDbDatabaseFixture fixture) : SchemaMigratorTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
 public sealed class SqliteDiagnosticsTests(SqliteDatabaseFixture fixture) : DiagnosticsTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlConnectionFailureTests(PostgreSqlDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerConnectionFailureTests(SqlServerDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlConnectionFailureTests(MySqlDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbConnectionFailureTests(MariaDbDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
