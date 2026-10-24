@@ -31,3 +31,13 @@ public sealed class MariaDbModelTests(MariaDbDatabaseFixture fixture) : ModelTes
 public sealed class MySqlDataModelTests(MySqlDataDatabaseFixture fixture) : ModelTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
 
 public sealed class SqliteDiagnosticsTests(SqliteDatabaseFixture fixture) : DiagnosticsTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlConnectionFailureTests(PostgreSqlDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerConnectionFailureTests(SqlServerDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlConnectionFailureTests(MySqlDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbConnectionFailureTests(MariaDbDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MySqlDataConnectionFailureTests(MySqlDataDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
