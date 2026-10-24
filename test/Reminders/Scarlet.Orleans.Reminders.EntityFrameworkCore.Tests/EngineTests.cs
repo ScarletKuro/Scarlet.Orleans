@@ -68,7 +68,8 @@ public sealed class MySqlReminderConnectionFailureTests(MySqlDatabaseFixture fix
 
 public sealed class MariaDbReminderConnectionFailureTests(MariaDbDatabaseFixture fixture) : ReminderConnectionFailureTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
-public sealed class MySqlDataReminderConnectionFailureTests(MySqlDataDatabaseFixture fixture) : ReminderConnectionFailureTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+// No MySql.Data connection failure tests: under concurrent session kills its async reads can wait on a dead
+// connection past the command timeout, so the tests would hang in the driver. The README documents it.
 
 public sealed class SqliteReminderCancellationTests(SqliteDatabaseFixture fixture) : ReminderCancellationTests(fixture), IClassFixture<SqliteDatabaseFixture>;
 

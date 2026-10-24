@@ -57,8 +57,9 @@ When a later package version needs a newer schema, its release notes give the ve
 - Writes ignore the context's execution strategy, such as `EnableRetryOnFailure`, and are repeated only when the
   database reports that they were not applied. Reads use the strategy.
 
-`MySql.EntityFrameworkCore` runs on Oracle's MySql.Data, which has a known bug: concurrent TLS connection opens can
-corrupt its state, after which every open in the process fails. Prefer Microting's provider for MySQL; see the
+`MySql.EntityFrameworkCore` runs on Oracle's MySql.Data, which has known bugs: concurrent TLS connection opens can
+corrupt its state, after which every open in the process fails, and after a failover some calls can hang on dead
+connections. Prefer Microting's provider for MySQL; see the
 [repository](https://github.com/ScarletKuro/Scarlet.Orleans#supported-databases).
 
 Tested providers, diagnostics and supported versions are described in the

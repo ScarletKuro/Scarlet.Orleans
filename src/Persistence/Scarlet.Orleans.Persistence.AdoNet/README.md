@@ -29,9 +29,9 @@ Instead of `options.DataSource`, the provider resolves a `DbDataSource` from dep
 `options.DataSourceServiceKey` if set. The engine is inferred from the driver; set `options.Engine = "MariaDb"` for
 MariaDB, which shares MySqlConnector with MySQL.
 
-Oracle's MySql.Data has a known bug: concurrent TLS connection opens can corrupt its state, after which every open in
-the process fails. Prefer MySqlConnector; see the
-[repository](https://github.com/ScarletKuro/Scarlet.Orleans#supported-databases).
+Oracle's MySql.Data has known bugs: concurrent TLS connection opens can corrupt its state, after which every open in
+the process fails, and after a failover some calls can hang on dead connections. Prefer MySqlConnector; see
+the [repository](https://github.com/ScarletKuro/Scarlet.Orleans#supported-databases).
 
 ## Schema
 

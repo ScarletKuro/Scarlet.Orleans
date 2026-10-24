@@ -40,4 +40,5 @@ public sealed class MySqlConnectionFailureTests(MySqlDatabaseFixture fixture) : 
 
 public sealed class MariaDbConnectionFailureTests(MariaDbDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
-public sealed class MySqlDataConnectionFailureTests(MySqlDataDatabaseFixture fixture) : ConnectionFailureTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+// No MySql.Data connection failure tests: under concurrent session kills its async reads can wait on a dead
+// connection past the command timeout, so the tests would hang in the driver. The README documents it.
