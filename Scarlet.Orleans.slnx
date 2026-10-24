@@ -22,6 +22,7 @@
     <Project Path="test/Persistence/Scarlet.Orleans.Persistence.EntityFrameworkCore.Tests/Scarlet.Orleans.Persistence.EntityFrameworkCore.Tests.csproj" />
   </Folder>
   <Folder Name="/test/Reminders/">
+    <Project Path="test/Reminders/Scarlet.Orleans.Reminders.AdoNet.NativeAotTests/Scarlet.Orleans.Reminders.AdoNet.NativeAotTests.csproj" />
     <Project Path="test/Reminders/Scarlet.Orleans.Reminders.AdoNet.Tests/Scarlet.Orleans.Reminders.AdoNet.Tests.csproj" />
     <Project Path="test/Reminders/Scarlet.Orleans.Reminders.EntityFrameworkCore.Tests/Scarlet.Orleans.Reminders.EntityFrameworkCore.Tests.csproj" />
   </Folder>

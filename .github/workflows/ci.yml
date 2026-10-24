@@ -202,8 +202,12 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - name: Publish
-        run: dotnet publish test/Persistence/Scarlet.Orleans.Persistence.AdoNet.NativeAotTests -c $CONFIGURATION -r linux-x64 -o artifacts/aot-tests
+        run: |
+          dotnet publish test/Persistence/Scarlet.Orleans.Persistence.AdoNet.NativeAotTests -c $CONFIGURATION -r linux-x64 -o artifacts/aot-tests/persistence
+          dotnet publish test/Reminders/Scarlet.Orleans.Reminders.AdoNet.NativeAotTests -c $CONFIGURATION -r linux-x64 -o artifacts/aot-tests/reminders
       - name: Wait for SQL Server
         run: timeout 120 bash -c 'until docker logs "${{ job.services.sqlserver.id }}" 2>&1 | grep -q "SQL Server is now ready for client connections"; do sleep 2; done'
-      - name: Run
-        run: ./artifacts/aot-tests/Scarlet.Orleans.Persistence.AdoNet.NativeAotTests
+      - name: Run persistence
+        run: ./artifacts/aot-tests/persistence/Scarlet.Orleans.Persistence.AdoNet.NativeAotTests
+      - name: Run reminders
+        run: ./artifacts/aot-tests/reminders/Scarlet.Orleans.Reminders.AdoNet.NativeAotTests
