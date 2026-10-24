@@ -196,6 +196,10 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
     {
         await using var dataSource = factory.CreateDataSource(AdminConnectionString!);
         await using var command = dataSource.CreateCommand(sql);
+
+        // PostgreSQL checkpoints before creating or dropping a database, which takes far longer than the default 30 seconds
+        // on hosts with slow fsync, such as Docker Desktop.
+        command.CommandTimeout = 300;
         await command.ExecuteNonQueryAsync();
     }
 }

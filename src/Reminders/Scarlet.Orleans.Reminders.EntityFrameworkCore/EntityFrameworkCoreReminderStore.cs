@@ -164,7 +164,7 @@ internal sealed class EntityFrameworkCoreReminderStore<TContext>(
 
             try
             {
-                await new SingleAttemptExecutionStrategy(context).ExecuteAsync(c => context.SaveChangesAsync(c), cancellationToken).ConfigureAwait(false);
+                await new SingleAttemptExecutionStrategy(context).ExecuteAsync(context.SaveChangesAsync, cancellationToken).ConfigureAwait(false);
                 return true;
             }
             catch (DbUpdateException exception)

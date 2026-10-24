@@ -59,3 +59,13 @@ public sealed class MariaDbReminderServiceTests(MariaDbReminderServiceFixture fi
 public sealed class MySqlDataReminderServiceFixture() : ReminderServiceFixture(new MySqlDataDatabaseFixture());
 
 public sealed class MySqlDataReminderServiceTests(MySqlDataReminderServiceFixture fixture) : ReminderServiceTests(fixture), IClassFixture<MySqlDataReminderServiceFixture>;
+
+public sealed class PostgreSqlReminderConnectionFailureTests(PostgreSqlDatabaseFixture fixture) : ReminderConnectionFailureTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerReminderConnectionFailureTests(SqlServerDatabaseFixture fixture) : ReminderConnectionFailureTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlReminderConnectionFailureTests(MySqlDatabaseFixture fixture) : ReminderConnectionFailureTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbReminderConnectionFailureTests(MariaDbDatabaseFixture fixture) : ReminderConnectionFailureTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MySqlDataReminderConnectionFailureTests(MySqlDataDatabaseFixture fixture) : ReminderConnectionFailureTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
