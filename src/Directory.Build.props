@@ -10,8 +10,9 @@
     <!-- Cross-cutting infrastructure is compiled into every package rather than shipped as a shared package,
          so it stays internal and packages never depend on each other (design section 3.1). Only code that every
          component needs belongs in src/Shared; code for one component lives in that component's Shared folder.
-         src/Shared/AdoNet, the schema runner and engine selection, is linked by the ADO.NET packages only. -->
-    <Compile Include="$(SharedSourceRoot)**/*.cs" Exclude="$(SharedSourceRoot)AdoNet/**" LinkBase="Shared" />
+         src/Shared/AdoNet, the schema runner and engine selection, is linked by the ADO.NET packages only, and
+         src/Shared/EntityFrameworkCore by the EF Core packages only. -->
+    <Compile Include="$(SharedSourceRoot)**/*.cs" Exclude="$(SharedSourceRoot)AdoNet/**;$(SharedSourceRoot)EntityFrameworkCore/**" LinkBase="Shared" />
     <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 </Project>

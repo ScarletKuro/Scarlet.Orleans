@@ -23,6 +23,17 @@ public sealed class GrainStateKeyTests
         Assert.Equal(16, GrainStateKey.Create("service", "state", grainId).Hash.Length);
     }
 
+    /// <summary>
+    /// Stored rows are found by this hash, so the encoding of a key can never change.
+    /// </summary>
+    [Fact]
+    public void Create_ProducesTheStoredHash()
+    {
+        var key = GrainStateKey.Create("service", "state", GrainId.Create("type", "key"));
+
+        Assert.Equal("4E3176227B6CAEC7B06762119346039E", Convert.ToHexString(key.Hash));
+    }
+
     [Fact]
     public void Create_WithUnpairedSurrogate_Throws()
     {

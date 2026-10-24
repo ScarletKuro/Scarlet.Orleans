@@ -1,10 +1,9 @@
 using System.Data.Common;
 using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Scarlet.Orleans.Relational;
-using Scarlet.Orleans.Relational.Schema;
+using Scarlet.Orleans.Relational.EntityFrameworkCore;
 
 namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
 
@@ -51,7 +50,13 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(
 
         if (schemaMode == SchemaMode.Validate)
         {
-            await ValidateSchemaAsync(context, cancellationToken).ConfigureAwait(false);
+            await SchemaValidation.ValidateAsync(
+                context,
+                PersistenceSchema.Component,
+                PersistenceSchema.MinimumVersion,
+                PersistenceSchema.LatestVersion,
+                nameof(ScarletPersistenceModelBuilderExtensions.ApplyOrleansPersistenceSchema),
+                cancellationToken).ConfigureAwait(false);
 
             // Only a warning depends on the provider; the schema is the application's to change.
             if (context.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
@@ -167,64 +172,5 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(
         var hash = key.Hash;
         var identity = key.Identity;
         return context.Set<GrainStateRecord>().Where(r => r.KeyHash == hash && r.GrainIdentity == identity && r.ETag == expectedETag);
-    }
-
-    /// <summary>
-    /// Checks the versions recorded in <c>orleans_schema_history</c>, whichever flavour recorded them.
-    /// </summary>
-    private static async Task ValidateSchemaAsync(TContext context, CancellationToken cancellationToken)
-    {
-        List<int> versions;
-        try
-        {
-            versions = await SchemaHistoryModel.Set(context)
-                .Where(row => EF.Property<string>(row, SchemaHistoryModel.Component) == PersistenceSchema.Component)
-                .Select(row => EF.Property<int>(row, SchemaHistoryModel.Version))
-                .OrderBy(version => version)
-                .ToListAsync(cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            throw new SchemaVersionException(
-                $"Cannot read the {PersistenceSchema.Component} schema history. Create the Orleans tables with an EF Core migration that calls migrationBuilder.{nameof(ScarletPersistenceModelBuilderExtensions.ApplyOrleansPersistenceSchema)}({PersistenceSchema.LatestVersion}).",
-                exception);
-        }
-
-        if (versions.Count == 0)
-        {
-            throw new SchemaVersionException(
-                $"No {PersistenceSchema.Component} schema version is recorded. Call migrationBuilder.{nameof(ScarletPersistenceModelBuilderExtensions.ApplyOrleansPersistenceSchema)}({PersistenceSchema.LatestVersion}) in the migration that creates the Orleans tables.");
-        }
-
-        for (var i = 0; i < versions.Count; i++)
-        {
-            if (versions[i] != i + 1)
-            {
-                throw new SchemaVersionException($"The {PersistenceSchema.Component} schema history is missing version {i + 1}.");
-            }
-        }
-
-        var current = versions[^1];
-        if (current > PersistenceSchema.LatestVersion)
-        {
-            throw new SchemaVersionException(
-                $"The {PersistenceSchema.Component} schema is at version {current}, newer than the latest version {PersistenceSchema.LatestVersion} this code supports. Upgrade the package.");
-        }
-
-        if (current < PersistenceSchema.MinimumVersion)
-        {
-            throw new SchemaVersionException(
-                $"The {PersistenceSchema.Component} schema is at version {current}, and this code needs at least version {PersistenceSchema.MinimumVersion}. Add an EF Core migration that calls migrationBuilder.{nameof(ScarletPersistenceModelBuilderExtensions.ApplyOrleansPersistenceSchema)}({PersistenceSchema.MinimumVersion}).");
-        }
-    }
-
-    /// <summary>
-    /// Runs an operation exactly once. EF Core does not retry operations nested in a running execution strategy, so the
-    /// strategy configured on the context is suspended for the operation.
-    /// </summary>
-    private sealed class SingleAttemptExecutionStrategy(DbContext context) : ExecutionStrategy(context, maxRetryCount: 0, maxRetryDelay: TimeSpan.Zero)
-    {
-        protected override bool ShouldRetryOn(Exception exception) => false;
     }
 }

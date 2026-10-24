@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\**\*.cs" LinkBase="Shared" />
+    <Compile Include="..\..\Shared\**\*.cs" LinkBase="TestShared" />
+    <Using Include="Scarlet.Orleans.Tests" />
     <Using Include="Xunit" />
   </ItemGroup>
 

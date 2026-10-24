@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace Scarlet.Orleans.Persistence.Tests;
+namespace Scarlet.Orleans.Tests;
 
 /// <summary>
 /// A TCP relay between a driver and its database that loses responses: with <see cref="DropProbability"/>, it discards a

@@ -2,6 +2,7 @@ using System.Data.Common;
 using Microsoft.Data.Sqlite;
 using Npgsql;
 using Scarlet.Orleans.Persistence.EntityFrameworkCore;
+using Scarlet.Orleans.Relational.EntityFrameworkCore;
 
 namespace Scarlet.Orleans.Persistence.Tests;
 

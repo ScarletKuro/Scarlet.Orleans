@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\**\*.cs" LinkBase="Shared" />
+    <Compile Include="..\..\Shared\**\*.cs" LinkBase="TestShared" />
+    <Using Include="Scarlet.Orleans.Tests" />
     <Using Include="Xunit" />
     <!-- Engine selection, the ledger DDL and command helpers, which the EF Core package does not contain, to create
          databases the way the ADO.NET flavour does. -->

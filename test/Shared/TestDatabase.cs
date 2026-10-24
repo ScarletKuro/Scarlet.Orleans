@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 using MySqlConnector;
 using Npgsql;
 
-namespace Scarlet.Orleans.Persistence.Tests;
+namespace Scarlet.Orleans.Tests;
 
 /// <summary>
 /// An empty database created for a test run and dropped afterwards.

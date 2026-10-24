@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Scarlet.Orleans.Relational.Schema;
 
-namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
+namespace Scarlet.Orleans.Relational.EntityFrameworkCore;
 
 /// <summary>
 /// The <c>orleans_schema_history</c> ledger in the EF Core model, with the layout the ADO.NET runner creates.

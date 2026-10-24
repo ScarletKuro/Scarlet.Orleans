@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore.Migrations;
 using Scarlet.Orleans.Persistence;
 using Scarlet.Orleans.Persistence.EntityFrameworkCore;
+using Scarlet.Orleans.Relational.EntityFrameworkCore;
 using Scarlet.Orleans.Relational.Schema;
 
 namespace Microsoft.EntityFrameworkCore;

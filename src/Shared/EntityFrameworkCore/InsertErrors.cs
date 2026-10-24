@@ -2,7 +2,7 @@ using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
 using Scarlet.Orleans.Relational;
 
-namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
+namespace Scarlet.Orleans.Relational.EntityFrameworkCore;
 
 /// <summary>
 /// Tells from a failed insert's exception whether a row with the same key already existed.
@@ -32,7 +32,7 @@ internal static class InsertErrors
     /// </summary>
     /// <param name="exception">The error of the failed insert, unwrapped from EF Core's <c>DbUpdateException</c>.</param>
     /// <param name="isDuplicateKeyError">
-    /// The application's own rule (<see cref="ScarletEntityFrameworkCoreGrainStorageOptions.IsDuplicateKeyError"/>). When
+    /// The application's own rule, the <c>IsDuplicateKeyError</c> option of the EF Core packages. When
     /// set, it alone decides, for drivers whose errors the built-in rules do not recognise.
     /// </param>
     public static bool? IsDuplicateKey(Exception exception, Func<DbException, bool>? isDuplicateKeyError = null)
