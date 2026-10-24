@@ -3,6 +3,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <SharedSourceRoot>$(MSBuildThisFileDirectory)Shared/</SharedSourceRoot>
   </PropertyGroup>
   <ItemGroup>
@@ -11,5 +12,6 @@
          component needs belongs in src/Shared; code for one component lives in that component's Shared folder.
          src/Shared/AdoNet, the schema runner and engine selection, is linked by the ADO.NET packages only. -->
     <Compile Include="$(SharedSourceRoot)**/*.cs" Exclude="$(SharedSourceRoot)AdoNet/**" LinkBase="Shared" />
+    <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 </Project>
