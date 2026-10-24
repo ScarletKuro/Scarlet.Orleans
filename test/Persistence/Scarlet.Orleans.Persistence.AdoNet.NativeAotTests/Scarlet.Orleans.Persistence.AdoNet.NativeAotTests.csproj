@@ -23,6 +23,7 @@
     <Compile Include="..\Shared\GrainStorageConformanceTests.cs" LinkBase="Shared" />
     <Compile Include="..\Shared\SchemaManagementTests.cs" LinkBase="Shared" />
     <Compile Include="..\..\Shared\TestDatabase.cs" LinkBase="TestShared" />
+    <Compile Include="..\..\Shared\TestSchemaMode.cs" LinkBase="TestShared" />
     <Compile Include="..\Shared\TestDoubles.cs" LinkBase="Shared" />
     <Compile Include="..\Scarlet.Orleans.Persistence.AdoNet.Tests\FlavourStorage.cs" LinkBase="AdoNet" />
     <Compile Include="..\Scarlet.Orleans.Persistence.AdoNet.Tests\GrainStateKeyTests.cs" LinkBase="AdoNet" />

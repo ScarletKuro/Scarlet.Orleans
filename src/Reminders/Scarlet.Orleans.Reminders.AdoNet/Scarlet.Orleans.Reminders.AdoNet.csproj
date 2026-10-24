@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\Shared\Reminders.Shared.props" />
+
+  <PropertyGroup>
+    <Description>Orleans reminders for relational databases over plain ADO.NET: SQL Server, PostgreSQL, MySQL, MariaDB and SQLite. NativeAOT compatible.</Description>
+    <PackageTags>orleans;reminders;ado.net;sql;postgresql;mysql;mariadb;sqlite;sqlserver</PackageTags>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(SharedSourceRoot)AdoNet/**/*.cs" LinkBase="Shared/AdoNet" />
+    <EmbeddedResource Include="..\Shared\Schema\*.sql" LogicalName="%(Filename)%(Extension)" />
+    <None Include="..\Shared\Schema\*.sql" Pack="true" PackagePath="schema/" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Orleans.Reminders" />
+    <PackageReference Include="Microsoft.Orleans.Runtime" />
+    <PackageReference Include="System.IO.Hashing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Scarlet.Orleans.Reminders.AdoNet.Tests" />
+    <InternalsVisibleTo Include="Scarlet.Orleans.Reminders.AdoNet.NativeAotTests" />
+  </ItemGroup>
+
+</Project>

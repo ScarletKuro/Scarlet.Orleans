@@ -1,0 +1,7 @@
+<Project>
+  <!-- Linked into both reminder packages, so both run the same component logic over the same schema. The SQL
+       scripts in Schema/ ship with the ADO.NET flavour; the EF Core flavour generates the same tables from its model. -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)*.cs" LinkBase="Reminders" />
+  </ItemGroup>
+</Project>
