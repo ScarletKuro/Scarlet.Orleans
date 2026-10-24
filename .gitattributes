@@ -1,0 +1,7 @@
+# Files are stored and checked out with LF line endings on every platform, so commits do not churn between Windows and
+# Linux. Schema script checksums normalise line endings and are unaffected.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.nupkg binary
