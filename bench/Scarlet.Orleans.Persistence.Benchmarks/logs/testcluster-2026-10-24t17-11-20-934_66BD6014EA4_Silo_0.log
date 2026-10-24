@@ -1,0 +1,2 @@
+﻿[2026-10-24 17:11:20.730 GMT 33	Warning	LogWarningSiloGcNotRunningWithServerGC	Orleans.Runtime.Silo]	Note: Silo not running with ServerGC turned on - recommend checking app config : <configuration>-<runtime>-<gcServer enabled="true">	
+[2026-10-24 17:11:20.730 GMT 33	Warning	LogWarningSiloGcMultiCoreSystem	Orleans.Runtime.Silo]	Note: ServerGC only kicks in on multi-core systems (settings enabling ServerGC have no effect on single-core machines).	

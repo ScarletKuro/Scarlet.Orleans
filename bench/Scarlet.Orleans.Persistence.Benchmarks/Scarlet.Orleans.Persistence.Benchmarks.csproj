@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Compares grain storage providers through IGrainStorage on the same databases. See README.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1303;CA1812;CA2007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="InBoxScripts\*.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Persistence\Scarlet.Orleans.Persistence.AdoNet\Scarlet.Orleans.Persistence.AdoNet.csproj" />
+    <ProjectReference Include="..\..\src\Persistence\Scarlet.Orleans.Persistence.EntityFrameworkCore\Scarlet.Orleans.Persistence.EntityFrameworkCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Orleans.Sdk" />
+    <PackageReference Include="Microsoft.Orleans.TestingHost" />
+    <PackageReference Include="Microsoft.Orleans.Persistence.AdoNet" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microting.EntityFrameworkCore.MySql" />
+  </ItemGroup>
+
+</Project>

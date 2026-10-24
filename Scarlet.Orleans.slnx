@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/bench/">
+    <Project Path="bench/Scarlet.Orleans.Persistence.Benchmarks/Scarlet.Orleans.Persistence.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Persistence/">
     <Project Path="src/Persistence/Scarlet.Orleans.Persistence.AdoNet/Scarlet.Orleans.Persistence.AdoNet.csproj" />
