@@ -102,7 +102,7 @@ public sealed class CancellationTests
         var store = new InMemoryStore();
         var storage = new RelationalGrainStorage(
             "test", "service", store, new JsonTestSerializer(), new TestActivatorProvider(),
-            deleteStateOnClear: operation == "Delete", initStage: 0, TimeProvider.System, NullLogger<RelationalGrainStorage>.Instance);
+            deleteStateOnClear: operation == "Delete", maxPayloadSize: null, initStage: 0, TimeProvider.System, NullLogger<RelationalGrainStorage>.Instance);
         await storage.InitializeAsync(CancellationToken.None);
         var state = new GrainState<TestState> { State = new TestState { Value = 1 } };
         if (operation != "Write")

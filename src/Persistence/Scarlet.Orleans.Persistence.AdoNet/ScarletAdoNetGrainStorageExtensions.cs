@@ -70,6 +70,7 @@ public static class ScarletAdoNetGrainStorageExtensions
             options.GrainStorageSerializer,
             services.GetRequiredService<IActivatorProvider>(),
             options.DeleteStateOnClear,
+            options.MaxPayloadSize,
             options.InitStage,
             timeProvider,
             services.GetRequiredService<ILogger<RelationalGrainStorage>>());

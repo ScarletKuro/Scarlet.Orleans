@@ -26,6 +26,18 @@ public sealed class ScarletEntityFrameworkCoreGrainStorageOptions : IStorageProv
     public bool DeleteStateOnClear { get; set; }
 
     /// <summary>
+    /// The largest serialized grain state a write accepts, in bytes. When <see langword="null"/>, the default, the
+    /// provider sets no limit and the database's own applies.
+    /// </summary>
+    /// <remarks>
+    /// A larger state fails with an error naming the grain and both sizes, before anything is sent to the database. Set it
+    /// below the database's limit to get that error instead of the database's: MySQL and MariaDB refuse statements larger
+    /// than <c>max_allowed_packet</c>, 64 MiB by default; PostgreSQL limits <c>bytea</c> values to 1 GiB; SQL Server
+    /// limits <c>varbinary(max)</c> to 2 GiB.
+    /// </remarks>
+    public int? MaxPayloadSize { get; set; }
+
+    /// <summary>
     /// Decides whether the error of a failed insert reports a duplicate key, for an ADO.NET driver whose errors are not
     /// recognised. When <see langword="null"/>, the default, the errors of Npgsql, Microsoft.Data.SqlClient,
     /// MySqlConnector, MySql.Data and Microsoft.Data.Sqlite are recognised, as is the standard SQLSTATE 23505 of any driver.

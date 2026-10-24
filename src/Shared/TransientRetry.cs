@@ -28,6 +28,8 @@ internal static class TransientRetry
             }
             catch (Exception exception) when (attempt < MaxAttempts && ServerError(exception) is { } error && DbErrors.IsTransient(error))
             {
+                Diagnostics.RecordRetry(error.SqlState ?? error.GetType().Name);
+
                 // Full jitter keeps concurrent losers of the same deadlock from colliding again in lockstep.
                 var delay = BaseDelay * (1 << attempt) * Random.Shared.NextDouble();
                 await Task.Delay(delay, timeProvider, cancellationToken).ConfigureAwait(false);

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Transactions;
 using Microsoft.Extensions.Logging;
 using Orleans;
@@ -24,6 +26,16 @@ namespace Scarlet.Orleans.Persistence;
 /// as Orleans assumes: a caller's <see cref="TransactionScope"/> rolling back must not undo a write whose new ETag the
 /// grain already holds, and the stores' retries rely on each statement autocommitting.
 /// </para>
+/// <para>
+/// Every operation is traced and measured under <see cref="Diagnostics.Name"/>, tagged with the storage name, the
+/// operation and its outcome. Conflicts are logged at debug level, because concurrent activations make them part of
+/// normal operation; collisions at error level, because they should never happen. Other failures propagate to Orleans,
+/// which logs them.
+/// </para>
+/// <para>
+/// A write whose serialized state exceeds <c>maxPayloadSize</c> fails with <see cref="GrainStatePayloadTooLargeException"/>
+/// before anything is sent to the database.
+/// </para>
 /// </remarks>
 internal sealed partial class RelationalGrainStorage(
     string name,
@@ -32,10 +44,21 @@ internal sealed partial class RelationalGrainStorage(
     IGrainStorageSerializer serializer,
     IActivatorProvider activatorProvider,
     bool deleteStateOnClear,
+    int? maxPayloadSize,
     int initStage,
     TimeProvider timeProvider,
     ILogger<RelationalGrainStorage> logger) : IGrainStorage, ILifecycleParticipant<ISiloLifecycle>
 {
+    private static readonly Histogram<double> Duration = Diagnostics.Meter.CreateHistogram<double>(
+        "scarlet.orleans.persistence.duration",
+        unit: "s",
+        description: "The duration of grain storage operations, by storage, operation and outcome.");
+
+    private static readonly Histogram<long> PayloadSize = Diagnostics.Meter.CreateHistogram<long>(
+        "scarlet.orleans.persistence.payload.size",
+        unit: "By",
+        description: "The serialized size of written grain states, by storage.");
+
     public void Participate(ISiloLifecycle lifecycle) =>
         lifecycle.Subscribe($"{nameof(RelationalGrainStorage)}-{name}", initStage, InitializeAsync);
 
@@ -49,7 +72,10 @@ internal sealed partial class RelationalGrainStorage(
     public Task ReadStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState) =>
         ReadStateAsync(stateName, grainId, grainState, CancellationToken.None);
 
-    public async Task ReadStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken)
+    public Task ReadStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken) =>
+        ObserveAsync("read", stateName, grainId, () => ReadCoreAsync(stateName, grainId, grainState, cancellationToken));
+
+    private async Task ReadCoreAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var scope = SuppressAmbientTransaction();
@@ -75,7 +101,10 @@ internal sealed partial class RelationalGrainStorage(
     public Task WriteStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState) =>
         WriteStateAsync(stateName, grainId, grainState, CancellationToken.None);
 
-    public async Task WriteStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken)
+    public Task WriteStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken) =>
+        ObserveAsync("write", stateName, grainId, () => WriteCoreAsync(stateName, grainId, grainState, cancellationToken));
+
+    private async Task WriteCoreAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken)
     {
         // A canceled call does no work and leaves the grain state untouched. Once a write commits, the result is reported
         // whatever happens to the token, because the grain must learn its new ETag.
@@ -83,6 +112,13 @@ internal sealed partial class RelationalGrainStorage(
         using var scope = SuppressAmbientTransaction();
         var key = GrainStateKey.Create(serviceId, stateName, grainId);
         var payload = serializer.Serialize(grainState.State).ToArray();
+        PayloadSize.Record(payload.Length, new KeyValuePair<string, object?>("orleans.storage.name", name));
+        if (payload.Length > maxPayloadSize)
+        {
+            throw new GrainStatePayloadTooLargeException(
+                $"The serialized state of {key} is {payload.Length} bytes, larger than the {maxPayloadSize} bytes that grain storage {name} accepts. Nothing was written.");
+        }
+
         var etag = ETags.New(timeProvider);
         var now = timeProvider.GetUtcNow();
 
@@ -113,7 +149,10 @@ internal sealed partial class RelationalGrainStorage(
     public Task ClearStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState) =>
         ClearStateAsync(stateName, grainId, grainState, CancellationToken.None);
 
-    public async Task ClearStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken)
+    public Task ClearStateAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken) =>
+        ObserveAsync("clear", stateName, grainId, () => ClearCoreAsync(stateName, grainId, grainState, cancellationToken));
+
+    private async Task ClearCoreAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var scope = SuppressAmbientTransaction();
@@ -153,6 +192,61 @@ internal sealed partial class RelationalGrainStorage(
         }
 
         Reset(grainState, ETags.Format(etag));
+    }
+
+    /// <summary>
+    /// Runs one storage operation in a trace span, and records its duration and outcome.
+    /// </summary>
+    private async Task ObserveAsync(string operation, string stateName, GrainId grainId, Func<Task> body)
+    {
+        using var activity = Diagnostics.ActivitySource.StartActivity($"persistence {operation}");
+        activity?.SetTag("orleans.storage.name", name);
+        activity?.SetTag("orleans.storage.operation", operation);
+        activity?.SetTag("orleans.grain.id", grainId.ToString());
+        activity?.SetTag("orleans.storage.state_name", stateName);
+
+        var started = timeProvider.GetTimestamp();
+        var outcome = "error";
+        try
+        {
+            await body().ConfigureAwait(false);
+            outcome = "success";
+        }
+        catch (InconsistentStateException exception)
+        {
+            outcome = "conflict";
+            LogConflict(exception, name, operation, grainId, stateName);
+            throw;
+        }
+        catch (GrainStateKeyCollisionException exception)
+        {
+            outcome = "collision";
+            LogCollision(exception, name, grainId, stateName);
+            throw;
+        }
+        catch (GrainStatePayloadTooLargeException)
+        {
+            outcome = "payload_too_large";
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            outcome = "canceled";
+            throw;
+        }
+        finally
+        {
+            Duration.Record(
+                timeProvider.GetElapsedTime(started).TotalSeconds,
+                new KeyValuePair<string, object?>("orleans.storage.name", name),
+                new KeyValuePair<string, object?>("orleans.storage.operation", operation),
+                new KeyValuePair<string, object?>("outcome", outcome));
+            activity?.SetTag("outcome", outcome);
+            if (outcome is not ("success" or "conflict" or "canceled"))
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, outcome);
+            }
+        }
     }
 
     /// <summary>
@@ -230,9 +324,20 @@ internal sealed partial class RelationalGrainStorage(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Initialized grain storage {Name} for service {ServiceId}.")]
     private partial void LogInitialized(string name, string serviceId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Grain storage {Name}: {Operation} of {GrainId} state {StateName} conflicted with a newer version.")]
+    private partial void LogConflict(Exception exception, string name, string operation, GrainId grainId, string stateName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Grain storage {Name}: the storage key of {GrainId} state {StateName} is held by another grain state.")]
+    private partial void LogCollision(Exception exception, string name, GrainId grainId, string stateName);
 }
 
 /// <summary>
 /// Two distinct grain states hash to the same storage key.
 /// </summary>
 internal sealed class GrainStateKeyCollisionException(string message) : InvalidOperationException(message);
+
+/// <summary>
+/// A grain state serialized to more bytes than the storage's <c>MaxPayloadSize</c> allows.
+/// </summary>
+internal sealed class GrainStatePayloadTooLargeException(string message) : InvalidOperationException(message);

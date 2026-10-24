@@ -281,6 +281,23 @@ public abstract class GrainStorageConformanceTests(DatabaseFixture fixture)
     }
 
     [Fact]
+    public async Task Write_LargerThanMaxPayloadSize_FailsAndWritesNothing()
+    {
+        await CreateInitializedStorageAsync();
+        var storage = FlavourStorage.Create(FlavourStorage.CreateStore(Fixture.Database, TestSchemaMode.Validate), serviceId, deleteStateOnClear: false, maxPayloadSize: 64);
+        await storage.InitializeAsync(TestContext.Current.CancellationToken);
+        var grainId = NewGrainId();
+
+        var exception = await Assert.ThrowsAsync<GrainStatePayloadTooLargeException>(
+            () => storage.WriteStateAsync(StateName, grainId, new GrainState<TestState> { State = new TestState { Text = new string('x', 100) } }));
+
+        Assert.Contains(grainId.ToString(), exception.Message, StringComparison.Ordinal);
+        Assert.False((await ReadAsync(storage, grainId)).RecordExists);
+        await storage.WriteStateAsync(StateName, grainId, NewState(1));
+        Assert.Equal(1, (await ReadAsync(storage, grainId)).State!.Value);
+    }
+
+    [Fact]
     public async Task ConcurrentWrites_WithTheSameETag_ExactlyOneSucceeds()
     {
         var storage = await CreateInitializedStorageAsync();

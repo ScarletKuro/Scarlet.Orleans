@@ -29,3 +29,5 @@ public sealed class MySqlModelTests(MySqlDatabaseFixture fixture) : ModelTests(f
 public sealed class MariaDbModelTests(MariaDbDatabaseFixture fixture) : ModelTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
 public sealed class MySqlDataModelTests(MySqlDataDatabaseFixture fixture) : ModelTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class SqliteDiagnosticsTests(SqliteDatabaseFixture fixture) : DiagnosticsTests(fixture), IClassFixture<SqliteDatabaseFixture>;

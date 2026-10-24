@@ -35,3 +35,5 @@ public sealed class MySqlDataGrainStorageTests(MySqlDataDatabaseFixture fixture)
 public sealed class MySqlDataSchemaManagementTests(MySqlDataDatabaseFixture fixture) : SchemaManagementTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
 
 public sealed class MySqlDataSchemaMigratorTests(MySqlDataDatabaseFixture fixture) : SchemaMigratorTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class SqliteDiagnosticsTests(SqliteDatabaseFixture fixture) : DiagnosticsTests(fixture), IClassFixture<SqliteDatabaseFixture>;

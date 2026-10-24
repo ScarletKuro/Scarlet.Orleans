@@ -20,8 +20,8 @@ internal static class FlavourStorage
     public static RelationalGrainStorage Create(TestDatabase database, string serviceId, bool deleteStateOnClear, TestSchemaMode schemaMode) =>
         Create(CreateStore(database, schemaMode), serviceId, deleteStateOnClear);
 
-    public static RelationalGrainStorage Create(IGrainStateStore store, string serviceId, bool deleteStateOnClear) =>
-        new("test", serviceId, store, new JsonTestSerializer(), new TestActivatorProvider(), deleteStateOnClear, initStage: 0, TimeProvider.System, NullLogger<RelationalGrainStorage>.Instance);
+    public static RelationalGrainStorage Create(IGrainStateStore store, string serviceId, bool deleteStateOnClear, int? maxPayloadSize = null, string name = "test") =>
+        new(name, serviceId, store, new JsonTestSerializer(), new TestActivatorProvider(), deleteStateOnClear, maxPayloadSize, initStage: 0, TimeProvider.System, NullLogger<RelationalGrainStorage>.Instance);
 
     /// <summary>
     /// The EF Core flavour never changes the schema, so <see cref="TestSchemaMode.Apply"/> creates it first, as an

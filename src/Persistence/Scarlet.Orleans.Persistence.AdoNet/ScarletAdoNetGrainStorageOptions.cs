@@ -41,6 +41,18 @@ public sealed class ScarletAdoNetGrainStorageOptions : IStorageProviderSerialize
     /// </summary>
     public bool DeleteStateOnClear { get; set; }
 
+    /// <summary>
+    /// The largest serialized grain state a write accepts, in bytes. When <see langword="null"/>, the default, the
+    /// provider sets no limit and the database's own applies.
+    /// </summary>
+    /// <remarks>
+    /// A larger state fails with an error naming the grain and both sizes, before anything is sent to the database. Set it
+    /// below the database's limit to get that error instead of the database's: MySQL and MariaDB refuse statements larger
+    /// than <c>max_allowed_packet</c>, 64 MiB by default; PostgreSQL limits <c>bytea</c> values to 1 GiB; SQL Server
+    /// limits <c>varbinary(max)</c> to 2 GiB.
+    /// </remarks>
+    public int? MaxPayloadSize { get; set; }
+
     /// <inheritdoc/>
     public IGrainStorageSerializer GrainStorageSerializer { get; set; } = null!;
 
