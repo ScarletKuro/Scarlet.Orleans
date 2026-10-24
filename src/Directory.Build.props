@@ -13,6 +13,7 @@
          src/Shared/AdoNet, the schema runner and engine selection, is linked by the ADO.NET packages only, and
          src/Shared/EntityFrameworkCore by the EF Core packages only. -->
     <Compile Include="$(SharedSourceRoot)**/*.cs" Exclude="$(SharedSourceRoot)AdoNet/**;$(SharedSourceRoot)EntityFrameworkCore/**" LinkBase="Shared" />
-    <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" Visible="false" />
+    <!-- Each package ships its own README, next to its project; the repository README is the overview. -->
+    <None Include="$(MSBuildProjectDirectory)/README.md" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 </Project>
