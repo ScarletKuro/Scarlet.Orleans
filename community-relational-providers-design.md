@@ -407,25 +407,29 @@ The ADO.NET flavour aims to be fully NativeAOT- and trimming-compatible from the
 
 **Table**
 
-- `orleans_reminder`: `service_id`, `grain_id_hash`, `reminder_name_hash` (key), `grain_id` (bytes, section 4.3), `grain_id_display`, `reminder_name`, `grain_hash` (`uint`, for range queries), `start_at`, `period`, `etag`.
+- `orleans_reminder`: `key_hash` (key), `reminder_identity` (bytes, section 4.3), `service_hash`, `grain_key_hash`, `grain_hash` (the grain's ring position, for range reads), `service_id`, `grain_id` and `reminder_name` (display text only), `start_at_ticks`, `period_ticks`, `etag`.
+- Indexes: `(service_hash, grain_hash)` for range reads, `grain_key_hash` for reads by grain.
 
 **Guarantees** (the `IReminderTable` contract)
 
 - Read by grain, read by name, read by hash range, upsert, remove with ETag, clear table.
-- Range reads handle the wrap-around ranges Orleans produces (begin greater than end).
+- Range reads use the ring's `(begin, end]` semantics, including the wrap-around ranges Orleans produces (begin not less than end), so `(x, x]` is the whole ring.
 
 **Implementation rules**
 
-- Upsert is insert-or-update keyed by the hash key, rotating the ETag. The update branch matches the full `grain_id` and `reminder_name` as well as the hash key, so a hash collision fails with the collision error (section 4.3) instead of replacing another grain's reminder. Remove checks the ETag.
-- `grain_hash` is stored in a type that can hold the full `uint` range on every engine (`bigint` where there is no unsigned type).
-- Index on `(service_id, grain_hash)` for range reads.
-- `grain_id` and `reminder_name` are unbounded, which removes the 150-character limit (dotnet/orleans#9653).
+- The identity is the service ID, grain type, grain key and reminder name, encoded as in section 4.3. `key_hash` hashes the whole identity, `grain_key_hash` the service, grain type and grain key, `service_hash` the service alone. Range reads return reminders of any grain, so each row's grain ID and name are decoded from `reminder_identity`; no column limits their length, which removes the 150-character limit (dotnet/orleans#9653).
+- Every row found by any hash is verified against the identity: a point read whose identity differs, a grain read returning another grain, or a range read returning another service fails with the collision error (section 4.3).
+- Upsert replaces the schedule whatever the stored ETag, as Orleans requires, and issues a new ETag. It is an update matching `key_hash` and the full identity, then an insert if no row matched; if the insert finds a row, a concurrent upsert or remove moved it in between and the pair is tried again, up to three times; a row with another identity is a collision and nothing is written. Plain statements on every engine, so no engine needs `MERGE` or an upsert dialect. Remove checks the ETag; an ETag the provider never issued matches nothing.
+- `grain_hash` is `bigint`, which holds the full `uint` range on every engine.
+- Schedules are stored as UTC ticks (`bigint`): exact on every engine, with no time zone or precision differences. A local start time is converted to UTC; an unspecified one is taken as UTC, as Orleans creates them.
+- Writes follow the retry and cancellation rules of persistence (sections 4.7 and 7): no repeat after a connection failure, and an upsert canceled after it committed is reported with the ETag it wrote.
 
 **Tests**
 
-- The Orleans reminders TestKit.
-- Long grain IDs (generic grains), wrap-around ranges, ETag conflicts.
-- A forced collision (a test-only hash that maps two reminders to one key) proves that upsert fails and leaves the existing reminder untouched.
+- The Orleans reminders TestKit, table and model-based suites, on every engine and driver, and its service suite in a silo.
+- Long and binary identities, start time kinds and sub-second ticks, service isolation, ambient transactions.
+- A forced collision (a row moved under another reminder's key) proves that every operation on the colliding reminder fails and leaves the existing reminder untouched.
+- Upserts through killed sessions and lost responses, cancellation after commit, and the EF Core model against the scripts, columns and indexes.
 
 ### 5.5 Streaming
 

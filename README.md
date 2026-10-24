@@ -1,19 +1,22 @@
 # Scarlet.Orleans
 
 Relational storage providers for [Microsoft Orleans](https://github.com/dotnet/orleans) 10, in two flavours over one
-schema: plain **ADO.NET** (NativeAOT compatible) and **EF Core**. Persistence is available today; clustering, reminders,
-the grain directory and streaming are planned ([design](community-relational-providers-design.md)).
+schema: plain **ADO.NET** (NativeAOT compatible) and **EF Core**. Persistence and reminders are available today;
+clustering, the grain directory and streaming are planned ([design](community-relational-providers-design.md)).
 
 > **Status: preview.** The packages are tested against every supported engine in CI, including real connection failures
-> and the Orleans persistence TestKit, but have no production deployments yet. Try them where a lost write would be
+> and the Orleans persistence and reminders TestKits, but have no production deployments yet. Try them where a lost write would be
 > annoying rather than catastrophic, and report what you find.
 
 | Package | For |
 |---|---|
 | `Scarlet.Orleans.Persistence.AdoNet` | Grain persistence over ADO.NET: SQL Server, PostgreSQL, MySQL, MariaDB, SQLite. NativeAOT compatible. |
 | `Scarlet.Orleans.Persistence.EntityFrameworkCore` | Grain persistence over EF Core, with the Orleans tables in your own `DbContext` and migrations. |
+| `Scarlet.Orleans.Reminders.AdoNet` | The reminder table over ADO.NET, on the same engines. NativeAOT compatible. |
+| `Scarlet.Orleans.Reminders.EntityFrameworkCore` | The reminder table over EF Core, in your own `DbContext` and migrations. |
 
-Both require .NET 10 and Orleans 10.4 or later. Either flavour can use a database created by the other.
+All require .NET 10 and Orleans 10.4 or later. Either flavour can use a database created by the other, and the
+components can share one database. The sections below use persistence; [Reminders](#reminders) shows the differences.
 
 ## ADO.NET
 
@@ -88,6 +91,34 @@ Tested providers: SQL Server, Npgsql, SQLite, and for MySQL [Microting](https://
 (the maintained fork of Pomelo) or Oracle's `MySql.EntityFrameworkCore`. Other relational providers work; see
 [Supported databases](#supported-databases).
 
+## Reminders
+
+Reminders are set up like persistence, with the same data sources, contexts and schema modes:
+
+```csharp
+builder.UseOrleans(silo => silo
+    .UseScarletAdoNetReminderService(options =>
+    {
+        options.DataSource = dataSource;
+        options.SchemaMode = SchemaMode.Apply;
+    }));
+
+// EF Core: modelBuilder.ApplyOrleansRemindersModel() in OnModelCreating, and
+// migrationBuilder.ApplyOrleansRemindersSchema(1) in the migration that adds the tables.
+builder.UseOrleans(silo => silo.UseScarletEntityFrameworkCoreReminderService<AppDbContext>());
+```
+
+A context can map both components: call `ApplyOrleansPersistenceModel()` and `ApplyOrleansRemindersModel()`, and record
+each component's version in the migration. Options: `DataSource`, `DataSourceServiceKey`, `Engine` and `SchemaMode`
+for ADO.NET; `SchemaMode` and `IsDuplicateKeyError` for EF Core, with the meanings in [Options](#options).
+
+- **Upserts** replace a reminder's schedule whatever its ETag, as Orleans requires, and issue a new ETag. **Removes**
+  check the ETag.
+- **Identities.** Reminders are keyed by a 128-bit hash of the service, grain and reminder name, verified on every
+  read and write, so long grain IDs and names work.
+- **Schedules** are stored as UTC ticks, exact on every engine. A local start time is converted to UTC; an unspecified
+  one is taken as UTC, as Orleans creates them.
+
 ## Options
 
 | Option | Flavour | Default | Meaning |
@@ -131,10 +162,11 @@ builder.Services.AddOpenTelemetry()
 |---|---|---|
 | `scarlet.orleans.persistence.duration` | histogram, seconds | `orleans.storage.name`, `orleans.storage.operation` (`read`, `write`, `clear`), `outcome` (`success`, `conflict`, `collision`, `payload_too_large`, `canceled`, `error`) |
 | `scarlet.orleans.persistence.payload.size` | histogram, bytes | `orleans.storage.name` |
+| `scarlet.orleans.reminders.duration` | histogram, seconds | `orleans.reminders.operation` (`read`, `read_grain`, `read_range`, `upsert`, `remove`, `clear`), `outcome` (`success`, `collision`, `canceled`, `error`) |
 | `scarlet.orleans.retries` | counter | `error` |
 
-Each operation is also a trace span, `persistence read`, `persistence write` or `persistence clear`, with the grain ID,
-state name and outcome; retries appear as span events. Conflicts are logged at debug level, since concurrent
+Each operation is also a trace span, such as `persistence write` with the grain ID, state name and outcome, or
+`reminders upsert`; retries appear as span events. Conflicts are logged at debug level, since concurrent
 activations make them normal. Other failures propagate to Orleans, which logs them.
 
 ## Supported databases
@@ -165,10 +197,10 @@ run the comparison on your own infrastructure.
 
 ## Not yet supported
 
-- **Moving from the in-box Orleans ADO.NET provider.** The schemas differ, and there is no import tool yet; start new
+- **Moving from the in-box Orleans ADO.NET providers.** The schemas differ, and there is no import tool yet; start new
   deployments on these providers.
-- Table name and schema options; the tables are `orleans_grain_state` and `orleans_schema_history` in the connection's
-  default schema.
+- Table name and schema options; the tables are `orleans_grain_state`, `orleans_reminder` and `orleans_schema_history`
+  in the connection's default schema.
 
 ## Building and testing
 
