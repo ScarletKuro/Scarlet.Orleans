@@ -22,22 +22,26 @@ share one database and one `orleans_schema_history` table.
 ## Quick start
 
 ```csharp
+// Each package has its own SchemaMode, so code using two of them names which one it means.
+using PersistenceSchemaMode = Scarlet.Orleans.Persistence.AdoNet.SchemaMode;
+using RemindersSchemaMode = Scarlet.Orleans.Reminders.AdoNet.SchemaMode;
+
 var dataSource = NpgsqlDataSource.Create(connectionString);
 
 builder.UseOrleans(silo => silo
     .AddScarletAdoNetGrainStorageAsDefault(options =>
     {
         options.DataSource = dataSource;
-        options.SchemaMode = SchemaMode.Apply;
+        options.SchemaMode = PersistenceSchemaMode.Apply;
     })
     .UseScarletAdoNetReminderService(options =>
     {
         options.DataSource = dataSource;
-        options.SchemaMode = SchemaMode.Apply;
+        options.SchemaMode = RemindersSchemaMode.Apply;
     }));
 ```
 
-`SchemaMode.Apply` creates the tables at startup. In production, have a DBA run the scripts shipped in each package
+`Apply` creates the tables at startup. In production, have a DBA run the scripts shipped in each package
 under `schema/`, and keep the default `Validate`, which checks the schema without needing DDL rights. With EF Core, the
 tables come from your own migrations instead.
 
