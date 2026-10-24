@@ -1,0 +1,37 @@
+namespace Scarlet.Orleans.Reminders.Tests;
+
+public sealed class SqliteReminderTestKitTests(SqliteDatabaseFixture fixture) : ReminderTableTestKitTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlReminderTestKitTests(PostgreSqlDatabaseFixture fixture) : ReminderTableTestKitTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerReminderTestKitTests(SqlServerDatabaseFixture fixture) : ReminderTableTestKitTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlReminderTestKitTests(MySqlDatabaseFixture fixture) : ReminderTableTestKitTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbReminderTestKitTests(MariaDbDatabaseFixture fixture) : ReminderTableTestKitTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MySqlDataReminderTestKitTests(MySqlDataDatabaseFixture fixture) : ReminderTableTestKitTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class SqliteReminderConformanceTests(SqliteDatabaseFixture fixture) : ReminderTableConformanceTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlReminderConformanceTests(PostgreSqlDatabaseFixture fixture) : ReminderTableConformanceTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerReminderConformanceTests(SqlServerDatabaseFixture fixture) : ReminderTableConformanceTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlReminderConformanceTests(MySqlDatabaseFixture fixture) : ReminderTableConformanceTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbReminderConformanceTests(MariaDbDatabaseFixture fixture) : ReminderTableConformanceTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MySqlDataReminderConformanceTests(MySqlDataDatabaseFixture fixture) : ReminderTableConformanceTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class SqliteReminderModelTests(SqliteDatabaseFixture fixture) : ReminderModelTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlReminderModelTests(PostgreSqlDatabaseFixture fixture) : ReminderModelTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerReminderModelTests(SqlServerDatabaseFixture fixture) : ReminderModelTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlReminderModelTests(MySqlDatabaseFixture fixture) : ReminderModelTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbReminderModelTests(MariaDbDatabaseFixture fixture) : ReminderModelTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MySqlDataReminderModelTests(MySqlDataDatabaseFixture fixture) : ReminderModelTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;

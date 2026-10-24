@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1707;CA2007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\**\*.cs" Exclude="..\Shared\ReminderSchemaManagementTests.cs" LinkBase="Shared" />
+    <Compile Include="..\..\Shared\**\*.cs" LinkBase="TestShared" />
+    <Using Include="Scarlet.Orleans.Tests" />
+    <Using Include="Xunit" />
+    <!-- Engine selection and the ledger DDL, which the EF Core package does not contain, to create databases the way
+         the ADO.NET flavour does. -->
+    <Compile Include="..\..\..\src\Shared\AdoNet\**\*.cs" LinkBase="AdoNet" />
+    <!-- The ADO.NET flavour's scripts, which the EF Core model must reproduce exactly. -->
+    <None Include="..\..\..\src\Reminders\Shared\Schema\*.sql" Link="Schema\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Reminders\Scarlet.Orleans.Reminders.EntityFrameworkCore\Scarlet.Orleans.Reminders.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\External\Orleans.Reminders.TestKit\Orleans.Reminders.TestKit.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Microsoft.Orleans.Sdk" />
+    <PackageReference Include="Microsoft.Orleans.TestingHost" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microting.EntityFrameworkCore.MySql" />
+    <PackageReference Include="MySql.EntityFrameworkCore" />
+  </ItemGroup>
+
+</Project>

@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/src/Reminders/">
     <Project Path="src/Reminders/Scarlet.Orleans.Reminders.AdoNet/Scarlet.Orleans.Reminders.AdoNet.csproj" />
+    <Project Path="src/Reminders/Scarlet.Orleans.Reminders.EntityFrameworkCore/Scarlet.Orleans.Reminders.EntityFrameworkCore.csproj" />
   </Folder>
   <Folder Name="/test/" />
   <Folder Name="/test/External/">
@@ -22,5 +23,6 @@
   </Folder>
   <Folder Name="/test/Reminders/">
     <Project Path="test/Reminders/Scarlet.Orleans.Reminders.AdoNet.Tests/Scarlet.Orleans.Reminders.AdoNet.Tests.csproj" />
+    <Project Path="test/Reminders/Scarlet.Orleans.Reminders.EntityFrameworkCore.Tests/Scarlet.Orleans.Reminders.EntityFrameworkCore.Tests.csproj" />
   </Folder>
 </Solution>
