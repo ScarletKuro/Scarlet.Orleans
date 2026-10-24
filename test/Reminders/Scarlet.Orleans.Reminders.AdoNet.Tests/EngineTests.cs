@@ -69,3 +69,17 @@ public sealed class MySqlReminderConnectionFailureTests(MySqlDatabaseFixture fix
 public sealed class MariaDbReminderConnectionFailureTests(MariaDbDatabaseFixture fixture) : ReminderConnectionFailureTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
 public sealed class MySqlDataReminderConnectionFailureTests(MySqlDataDatabaseFixture fixture) : ReminderConnectionFailureTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class SqliteReminderCancellationTests(SqliteDatabaseFixture fixture) : ReminderCancellationTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlReminderCancellationTests(PostgreSqlDatabaseFixture fixture) : ReminderCancellationTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerReminderCancellationTests(SqlServerDatabaseFixture fixture) : ReminderCancellationTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlReminderCancellationTests(MySqlDatabaseFixture fixture) : ReminderCancellationTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbReminderCancellationTests(MariaDbDatabaseFixture fixture) : ReminderCancellationTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MySqlDataReminderCancellationTests(MySqlDataDatabaseFixture fixture) : ReminderCancellationTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class SqliteReminderDiagnosticsTests(SqliteDatabaseFixture fixture) : ReminderDiagnosticsTests(fixture), IClassFixture<SqliteDatabaseFixture>;
