@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -84,7 +85,7 @@ public sealed class ExecutionStrategyTests(SqliteDatabaseFixture fixture) : ICla
         var deleteOnFailure = new DeleteOnFailedInsertInterceptor(fixture.Database, key.Hash);
         var options = new DbContextOptionsBuilder<TestDbContext>().UseSqlite(fixture.Database.ConnectionString).AddInterceptors(deleteOnFailure).Options;
         var storage = FlavourStorage.Create(
-            new EntityFrameworkCoreGrainStateStore<TestDbContext>(new PooledDbContextFactory<TestDbContext>(options), SchemaMode.Validate, TimeProvider.System),
+            new EntityFrameworkCoreGrainStateStore<TestDbContext>(new PooledDbContextFactory<TestDbContext>(options), SchemaMode.Validate, TimeProvider.System, NullLogger.Instance),
             serviceId,
             deleteStateOnClear: false);
         await storage.InitializeAsync(TestContext.Current.CancellationToken);
@@ -100,7 +101,7 @@ public sealed class ExecutionStrategyTests(SqliteDatabaseFixture fixture) : ICla
     {
         await FlavourStorage.EnsureSchemaAsync(fixture.Database, TestContext.Current.CancellationToken);
         var store = new EntityFrameworkCoreGrainStateStore<TestDbContext>(
-            FlavourStorage.ContextFactory(fixture.Database), SchemaMode.Validate, TimeProvider.System, isDuplicateKeyError: _ => false);
+            FlavourStorage.ContextFactory(fixture.Database), SchemaMode.Validate, TimeProvider.System, NullLogger.Instance, isDuplicateKeyError: _ => false);
         var storage = FlavourStorage.Create(store, $"service-{Guid.NewGuid():N}", deleteStateOnClear: false);
         await storage.InitializeAsync(TestContext.Current.CancellationToken);
         var grainId = NewGrainId();
@@ -128,7 +129,7 @@ public sealed class ExecutionStrategyTests(SqliteDatabaseFixture fixture) : ICla
             .UseSqlite(fixture.Database.ConnectionString, sqlite => sqlite.ExecutionStrategy(dependencies => new RetryingStrategy(dependencies)))
             .AddInterceptors(interceptor)
             .Options;
-        var store = new EntityFrameworkCoreGrainStateStore<TestDbContext>(new PooledDbContextFactory<TestDbContext>(options), SchemaMode.Validate, TimeProvider.System);
+        var store = new EntityFrameworkCoreGrainStateStore<TestDbContext>(new PooledDbContextFactory<TestDbContext>(options), SchemaMode.Validate, TimeProvider.System, NullLogger.Instance);
         var storage = FlavourStorage.Create(store, $"service-{Guid.NewGuid():N}", deleteStateOnClear);
         await storage.InitializeAsync(TestContext.Current.CancellationToken);
         return (interceptor, storage);

@@ -32,7 +32,8 @@ internal static class FlavourStorage
         var store = new EntityFrameworkCoreGrainStateStore<TestDbContext>(
             ContextFactory(database),
             schemaMode == TestSchemaMode.None ? SchemaMode.None : SchemaMode.Validate,
-            TimeProvider.System);
+            TimeProvider.System,
+            NullLogger.Instance);
         return schemaMode == TestSchemaMode.Apply ? new SchemaCreatingStore(database, store) : store;
     }
 

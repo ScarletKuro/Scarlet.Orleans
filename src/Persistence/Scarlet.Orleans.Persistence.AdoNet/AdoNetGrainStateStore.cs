@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using Microsoft.Extensions.Logging;
 using Scarlet.Orleans.Relational;
 using Scarlet.Orleans.Relational.Schema;
 
@@ -12,7 +13,7 @@ namespace Scarlet.Orleans.Persistence.AdoNet;
 /// Every statement autocommits on its own, so a transient server error means nothing was applied and the statement
 /// is retried as a whole.
 /// </remarks>
-internal sealed class AdoNetGrainStateStore(DbDataSource dataSource, string? engineName, SchemaMode schemaMode, TimeProvider timeProvider) : IGrainStateStore
+internal sealed class AdoNetGrainStateStore(DbDataSource dataSource, string? engineName, SchemaMode schemaMode, TimeProvider timeProvider, ILogger logger) : IGrainStateStore
 {
     private RelationalEngine engine;
 
@@ -20,6 +21,11 @@ internal sealed class AdoNetGrainStateStore(DbDataSource dataSource, string? eng
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         engine = engineName is null ? RelationalEngines.FromConnection(connection) : RelationalEngines.Parse(engineName);
+        if (engine == RelationalEngine.Sqlite && schemaMode != SchemaMode.None)
+        {
+            await SqliteJournal.EnsureWriteAheadLogAsync(connection, enable: schemaMode == SchemaMode.Apply, logger, cancellationToken).ConfigureAwait(false);
+        }
+
         if (schemaMode != SchemaMode.None)
         {
             await CreateMigrator(engine).EnsureAsync(connection, apply: schemaMode == SchemaMode.Apply, cancellationToken).ConfigureAwait(false);

@@ -66,7 +66,7 @@ public static class ScarletAdoNetGrainStorageExtensions
         return new RelationalGrainStorage(
             name,
             services.GetProviderClusterOptions(name).Value.ServiceId,
-            new AdoNetGrainStateStore(dataSource, options.Engine, options.SchemaMode, timeProvider),
+            new AdoNetGrainStateStore(dataSource, options.Engine, options.SchemaMode, timeProvider, services.GetRequiredService<ILogger<AdoNetGrainStateStore>>()),
             options.GrainStorageSerializer,
             services.GetRequiredService<IActivatorProvider>(),
             options.DeleteStateOnClear,

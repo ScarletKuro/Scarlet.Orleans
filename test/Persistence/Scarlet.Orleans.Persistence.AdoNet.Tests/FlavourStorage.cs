@@ -13,7 +13,7 @@ internal static class FlavourStorage
         new(name, serviceId, store, new JsonTestSerializer(), new TestActivatorProvider(), deleteStateOnClear, maxPayloadSize, initStage: 0, TimeProvider.System, NullLogger<RelationalGrainStorage>.Instance);
 
     public static IGrainStateStore CreateStore(TestDatabase database, TestSchemaMode schemaMode) =>
-        new AdoNetGrainStateStore(database.DataSource, EngineOption(database), (SchemaMode)schemaMode, TimeProvider.System);
+        new AdoNetGrainStateStore(database.DataSource, EngineOption(database), (SchemaMode)schemaMode, TimeProvider.System, NullLogger.Instance);
 
     public static void AddStorage(ISiloBuilder silo, string name, TestDatabase database, bool deleteStateOnClear = false) =>
         silo.AddScarletAdoNetGrainStorage(name, options =>

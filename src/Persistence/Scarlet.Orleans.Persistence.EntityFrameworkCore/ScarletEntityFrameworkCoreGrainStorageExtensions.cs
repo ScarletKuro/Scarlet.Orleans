@@ -65,7 +65,7 @@ public static class ScarletEntityFrameworkCoreGrainStorageExtensions
         return new RelationalGrainStorage(
             name,
             services.GetProviderClusterOptions(name).Value.ServiceId,
-            new EntityFrameworkCoreGrainStateStore<TContext>(contextFactory, options.SchemaMode, timeProvider, options.IsDuplicateKeyError),
+            new EntityFrameworkCoreGrainStateStore<TContext>(contextFactory, options.SchemaMode, timeProvider, services.GetRequiredService<ILogger<RelationalGrainStorage>>(), options.IsDuplicateKeyError),
             options.GrainStorageSerializer,
             services.GetRequiredService<IActivatorProvider>(),
             options.DeleteStateOnClear,

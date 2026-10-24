@@ -117,7 +117,7 @@ public abstract class ModelTests(DatabaseFixture fixture)
     public async Task Context_WithoutTheOrleansModel_FailsAtStartup()
     {
         var options = FlavourStorage.Configure(new DbContextOptionsBuilder<BareDbContext>(), fixture.Database).Options;
-        var store = new EntityFrameworkCoreGrainStateStore<BareDbContext>(new PooledDbContextFactory<BareDbContext>(options), SchemaMode.Validate, TimeProvider.System);
+        var store = new EntityFrameworkCoreGrainStateStore<BareDbContext>(new PooledDbContextFactory<BareDbContext>(options), SchemaMode.Validate, TimeProvider.System, NullLogger.Instance);
         var storage = new RelationalGrainStorage("test", "model-tests", store, new JsonTestSerializer(), new TestActivatorProvider(), false, null, 0, TimeProvider.System, NullLogger<RelationalGrainStorage>.Instance);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => storage.InitializeAsync(CancellationToken));

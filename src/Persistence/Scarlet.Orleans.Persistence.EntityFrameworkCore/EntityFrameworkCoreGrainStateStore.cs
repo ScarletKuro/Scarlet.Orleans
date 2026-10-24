@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Scarlet.Orleans.Relational;
 using Scarlet.Orleans.Relational.Schema;
 
@@ -28,11 +29,13 @@ namespace Scarlet.Orleans.Persistence.EntityFrameworkCore;
 /// <param name="contextFactory">Creates the short-lived context of each operation.</param>
 /// <param name="schemaMode">What to check about the schema at startup.</param>
 /// <param name="timeProvider">Times the delays between retries of transient errors.</param>
+/// <param name="logger">Reports schema problems found at startup.</param>
 /// <param name="isDuplicateKeyError">The application's rule for recognising duplicate keys (<see cref="ScarletEntityFrameworkCoreGrainStorageOptions.IsDuplicateKeyError"/>).</param>
 internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(
     IDbContextFactory<TContext> contextFactory,
     SchemaMode schemaMode,
     TimeProvider timeProvider,
+    ILogger logger,
     Func<DbException, bool>? isDuplicateKeyError = null)
     : IGrainStateStore
     where TContext : DbContext
@@ -49,6 +52,13 @@ internal sealed class EntityFrameworkCoreGrainStateStore<TContext>(
         if (schemaMode == SchemaMode.Validate)
         {
             await ValidateSchemaAsync(context, cancellationToken).ConfigureAwait(false);
+
+            // Only a warning depends on the provider; the schema is the application's to change.
+            if (context.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+            {
+                await context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+                await SqliteJournal.EnsureWriteAheadLogAsync(context.Database.GetDbConnection(), enable: false, logger, cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 
