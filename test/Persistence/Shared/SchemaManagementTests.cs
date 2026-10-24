@@ -44,6 +44,21 @@ public abstract class SchemaManagementTests(DatabaseFixture fixture)
         await Storage(database, TestSchemaMode.Validate).InitializeAsync(CancellationToken);
 
         Assert.Equal([1], await ReadLedgerVersionsAsync(database));
+        Assert.Equal(SchemaLedger.ScriptSource, await ScalarAsync(database, $"SELECT source FROM {SchemaLedger.TableName}"));
+    }
+
+    [Fact]
+    public async Task Validate_AfterTheScriptRanByHand_Passes()
+    {
+        var database = await fixture.CreateDatabaseAsync();
+        var script = Assert.Single(SchemaScript.Load(typeof(PersistenceSchema).Assembly, RelationalEngines.Parse(database.Engine)));
+        await ExecuteAsync(database, script.Text);
+
+        await Storage(database, TestSchemaMode.Validate).InitializeAsync(CancellationToken);
+        await Storage(database, TestSchemaMode.Apply).InitializeAsync(CancellationToken);
+
+        Assert.Equal([1], await ReadLedgerVersionsAsync(database));
+        Assert.Equal(SchemaLedger.ManualSource, await ScalarAsync(database, $"SELECT source FROM {SchemaLedger.TableName}"));
     }
 
     [Fact]
@@ -103,6 +118,12 @@ public abstract class SchemaManagementTests(DatabaseFixture fixture)
         command.AddParameter("checksum", "future", DbType.String);
         command.AddParameter("source", SchemaLedger.ScriptSource, DbType.String);
         await command.ExecuteNonQueryAsync(CancellationToken);
+    }
+
+    private static async Task<object?> ScalarAsync(TestDatabase database, string sql)
+    {
+        await using var command = database.DataSource.CreateCommand(sql);
+        return await command.ExecuteScalarAsync(CancellationToken);
     }
 
     private static async Task ExecuteAsync(TestDatabase database, string sql)

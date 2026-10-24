@@ -108,14 +108,19 @@ internal sealed class SchemaMigrator(string component, RelationalEngine engine, 
             await run.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await using (var record = Command(connection, transaction, SchemaLedger.Insert))
+        // Shipped scripts record themselves as run by hand; the runner then records what it applied, with the checksum.
+        foreach (var sql in new[] { SchemaLedger.Update, SchemaLedger.Insert })
         {
+            await using var record = Command(connection, transaction, sql);
             record.AddParameter("component", component, DbType.String);
             record.AddParameter("version", script.Version, DbType.Int32);
             record.AddParameter("script", script.Name, DbType.String);
             record.AddParameter("checksum", script.Checksum, DbType.String);
             record.AddParameter("source", SchemaLedger.ScriptSource, DbType.String);
-            await record.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            if (await record.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0)
+            {
+                break;
+            }
         }
 
         if (own is not null)

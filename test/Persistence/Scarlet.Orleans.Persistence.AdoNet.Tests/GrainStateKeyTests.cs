@@ -42,4 +42,16 @@ public sealed class SchemaScriptTests
 
         Assert.Equal(Enumerable.Range(1, PersistenceSchema.LatestVersion), scripts.Select(script => script.Version));
     }
+
+    [Theory]
+    [MemberData(nameof(Engines))]
+    public void EveryScript_CreatesTheLedgerExactlyAsTheRunnerDoes(string engine)
+    {
+        var parsed = Scarlet.Orleans.Relational.RelationalEngines.Parse(engine);
+        var ledger = Scarlet.Orleans.Relational.Schema.SchemaLedgerSql.CreateTable(parsed).ReplaceLineEndings("\n").Trim();
+
+        Assert.All(
+            Scarlet.Orleans.Relational.Schema.SchemaScript.Load(typeof(PersistenceSchema).Assembly, parsed),
+            script => Assert.Contains(ledger, script.Text.ReplaceLineEndings("\n"), StringComparison.Ordinal));
+    }
 }

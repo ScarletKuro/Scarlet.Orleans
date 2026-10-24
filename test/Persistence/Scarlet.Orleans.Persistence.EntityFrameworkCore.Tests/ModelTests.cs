@@ -59,7 +59,6 @@ public abstract class ModelTests(DatabaseFixture fixture)
     {
         var database = await fixture.CreateDatabaseAsync();
         await ApplyScriptsAsync(database);
-        await InsertLedgerRowAsync(database, version: 1, SchemaLedger.ScriptSource);
         var storage = Validating(database);
         await storage.InitializeAsync(CancellationToken);
         var grainId = GrainId.Create("model-grain", "key");

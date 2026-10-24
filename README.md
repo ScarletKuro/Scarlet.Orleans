@@ -46,10 +46,10 @@ MariaDB, which shares MySqlConnector with MySQL.
 | `Apply` | Creates the schema or applies pending scripts, under a database lock, so many silos can start at once. Needs DDL permissions. |
 | `None` | No checks. |
 
-The scripts are embedded in the package and also shipped under `schema/` in the NuGet package, for review. The runner
-records each applied script and its checksum in `orleans_schema_history`, which `Validate` checks, so apply the schema
-through the provider: where silos should have no DDL rights, run one with `Apply` and a privileged connection, for
-example from a deployment job, and the silos with `Validate`.
+The scripts are embedded in the package and also shipped under `schema/` in the NuGet package, so a DBA can review
+and run them by hand, in version order. Each script records itself in `orleans_schema_history`, which `Validate`
+checks, so silos without DDL rights can then start in `Validate` mode. When the provider applies a script itself, it
+also records the script's checksum, and fails startup if a shipped script was ever edited.
 
 **SQLite.** Concurrent writers need SQLite's write-ahead log, because in its default journal readers block writers and
 writes fail with "database is locked". `Apply` switches the database to WAL; otherwise run `PRAGMA journal_mode = WAL`
