@@ -97,6 +97,36 @@ public sealed class CancellationTests
         Assert.Equal(store.CurrentETag, state.ETag);
     }
 
+    [Theory]
+    [InlineData("Write")]
+    [InlineData("Clear")]
+    public async Task CancellationWhileTheCommittedStatementIsAnswered_StillReportsTheWrite(string operation)
+    {
+        var (store, storage, state) = await ArrangeAsync(operation);
+        using var cancellation = new CancellationTokenSource();
+        store.CancelAfterCommit = cancellation;
+
+        await InvokeAsync(storage, operation, state, cancellation.Token);
+
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.Equal(store.CurrentETag, state.ETag);
+        Assert.Equal(operation == "Write", state.RecordExists);
+    }
+
+    [Fact]
+    public async Task CancellationWhileACommittedDeleteIsAnswered_IsReportedAsCanceled()
+    {
+        var (store, storage, state) = await ArrangeAsync("Delete");
+        var before = Snapshot(state);
+        using var cancellation = new CancellationTokenSource();
+        store.CancelAfterCommit = cancellation;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => InvokeAsync(storage, "Delete", state, cancellation.Token));
+
+        Assert.Null(store.CurrentETag);
+        Assert.Equal(before, Snapshot(state));
+    }
+
     private static async Task<(InMemoryStore Store, RelationalGrainStorage Storage, GrainState<TestState> State)> ArrangeAsync(string operation)
     {
         var store = new InMemoryStore();
@@ -140,6 +170,9 @@ public sealed class CancellationTests
         public TaskCompletionSource Blocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Action? AfterWrite { get; set; }
+
+        /// <summary>Commits the next write, then cancels this source and fails as canceled, as a driver does.</summary>
+        public CancellationTokenSource? CancelAfterCommit { get; set; }
 
         public string? CurrentETag => row is null ? null : new Guid(row.ETag).ToString("N");
 
@@ -188,13 +221,20 @@ public sealed class CancellationTests
         {
             row = committed;
             AfterWrite?.Invoke();
+            if (CancelAfterCommit is { } cancellation)
+            {
+                CancelAfterCommit = null;
+                cancellation.Cancel();
+                throw new OperationCanceledException(cancellation.Token);
+            }
+
             return true;
         }
 
         private async Task EnterAsync(CancellationToken cancellationToken)
         {
             Tokens.Add(cancellationToken);
-            if (BlockUntilCanceled)
+            if (BlockUntilCanceled && cancellationToken.CanBeCanceled)
             {
                 Blocked.TrySetResult();
                 await Task.Delay(Timeout.Infinite, cancellationToken);

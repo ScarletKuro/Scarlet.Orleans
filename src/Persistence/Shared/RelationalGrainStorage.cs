@@ -106,8 +106,8 @@ internal sealed partial class RelationalGrainStorage(
 
     private async Task WriteCoreAsync<T>(string stateName, GrainId grainId, IGrainState<T> grainState, CancellationToken cancellationToken)
     {
-        // A canceled call does no work and leaves the grain state untouched. Once a write commits, the result is reported
-        // whatever happens to the token, because the grain must learn its new ETag.
+        // A call canceled before it starts does no work and leaves the grain state untouched. Once a write commits, the
+        // result is reported whatever happens to the token, because the grain must learn its new ETag.
         cancellationToken.ThrowIfCancellationRequested();
         using var scope = SuppressAmbientTransaction();
         var key = GrainStateKey.Create(serviceId, stateName, grainId);
@@ -125,11 +125,11 @@ internal sealed partial class RelationalGrainStorage(
         bool written;
         if (grainState.ETag is null)
         {
-            written = await store.TryInsertAsync(key, payload, etag, now, cancellationToken).ConfigureAwait(false);
+            written = await SettleCancellationAsync(store.TryInsertAsync(key, payload, etag, now, cancellationToken), key, etag).ConfigureAwait(false);
         }
         else if (ETags.TryParse(grainState.ETag, out var expected))
         {
-            written = await store.TryUpdateAsync(key, expected, payload, etag, now, cancellationToken).ConfigureAwait(false);
+            written = await SettleCancellationAsync(store.TryUpdateAsync(key, expected, payload, etag, now, cancellationToken), key, etag).ConfigureAwait(false);
         }
         else
         {
@@ -186,7 +186,7 @@ internal sealed partial class RelationalGrainStorage(
         }
 
         var etag = ETags.New(timeProvider);
-        if (!await store.TryUpdateAsync(key, expected, payload: null, etag, timeProvider.GetUtcNow(), cancellationToken).ConfigureAwait(false))
+        if (!await SettleCancellationAsync(store.TryUpdateAsync(key, expected, payload: null, etag, timeProvider.GetUtcNow(), cancellationToken), key, etag).ConfigureAwait(false))
         {
             await ResolveUnmatchedWriteAsync("Clear", key, grainState.ETag, etag, cancellationToken).ConfigureAwait(false);
         }
@@ -246,6 +246,40 @@ internal sealed partial class RelationalGrainStorage(
             {
                 activity?.SetStatus(ActivityStatusCode.Error, outcome);
             }
+        }
+    }
+
+    /// <summary>
+    /// Awaits a write and, if it is canceled, reports whether it committed anyway.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A token that fires while the statement is in flight makes the driver cancel it, but the server may already have
+    /// committed. Drivers throw only once the server has answered the cancellation, so by then the statement's outcome
+    /// is final, and a read-back, which must not be canceled itself, settles it: if the row holds
+    /// <paramref name="proposedETag"/>, the write committed and is reported, so the grain learns its new ETag; otherwise
+    /// the cancellation stands and the grain state is untouched.
+    /// </para>
+    /// <para>
+    /// Deletes are not settled: a deleted row leaves no ETag to prove whose delete it was. A delete canceled after it
+    /// committed is reported as canceled, and the grain's next operation finds no row and conflicts, which makes it re-read.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> SettleCancellationAsync(Task<bool> write, GrainStateKey key, byte[] proposedETag)
+    {
+        try
+        {
+            return await write.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            var stored = await ReadVerifiedAsync(key, CancellationToken.None).ConfigureAwait(false);
+            if (stored is not null && stored.ETag.AsSpan().SequenceEqual(proposedETag))
+            {
+                return true;
+            }
+
+            throw;
         }
     }
 
