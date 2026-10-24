@@ -14,7 +14,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EntityFrameworkCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="$(EntityFrameworkCoreVersion)" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
-    <PackageVersion Include="System.IO.Hashing" Version="10.0.3" />
+    <PackageVersion Include="System.IO.Hashing" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="$(EntityFrameworkCoreVersion)" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.7" />
     <PackageVersion Include="Npgsql" Version="10.0.0" />
