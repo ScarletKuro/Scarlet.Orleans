@@ -1,4 +1,8 @@
+using System.Data.Common;
 using System.Diagnostics;
+using Microsoft.Data.SqlClient;
+using MySqlConnector;
+using Npgsql;
 using Orleans;
 using Orleans.Runtime;
 using Orleans.Storage;
@@ -6,8 +10,8 @@ using Orleans.Storage;
 namespace Scarlet.Orleans.Persistence.Tests;
 
 /// <summary>
-/// Grain writes while the database kills every session of the test database again and again, as a failover or a network
-/// partition would: real broken connections, failures mid-statement, and acknowledgements lost after commit.
+/// Grain writes through real connection failures: sessions killed by the database, as in a failover, and responses lost on
+/// the way back, as in a network partition after the server has committed.
 /// </summary>
 /// <remarks>
 /// Each writer writes increasing values to its own grain. A write that fails with any error other than a conflict has an
@@ -35,6 +39,37 @@ public abstract class ConnectionFailureTests(DatabaseFixture fixture)
 
         Assert.True(kills > 0, "The test database had no sessions to kill.");
         Assert.True(results.Sum(r => r.Failures) > 0, $"Killing {kills} sessions failed no write, so this test exercised nothing.");
+        await VerifyAsync(storage, results);
+    }
+
+    /// <summary>
+    /// The server runs, and commits, every statement it receives, but some responses never reach the driver: the outcome
+    /// of those writes is unknown, which is where a false conflict or a lost write would show.
+    /// </summary>
+    [Fact]
+    public async Task Writes_WhoseResponsesAreLost_StayDurableAndNeverConflictFalsely()
+    {
+        var (host, port, connect) = Route(fixture.Database);
+        await using var proxy = new ChaosProxy(host, port);
+        var (connectionString, dataSource) = connect(proxy.Port);
+
+        // The rewritten connection string is kept as built: a data source's own copy can omit the password (Npgsql does),
+        // and the EF Core flavour connects from the string.
+        await using var database = new TestDatabase(fixture.Database.Engine, fixture.Database.Driver, connectionString, dataSource, () => Task.CompletedTask);
+        var storage = FlavourStorage.Create(database, $"service-{Guid.NewGuid():N}", deleteStateOnClear: false, TestSchemaMode.Apply);
+        await storage.InitializeAsync(TestContext.Current.CancellationToken);
+        using var stop = new CancellationTokenSource(Duration);
+
+        proxy.DropProbability = 0.05;
+        var results = await Task.WhenAll(Enumerable.Range(0, Writers).Select(i => WriteAsync(storage, GrainId.Create("failure-grain", $"{Guid.NewGuid():N}-{i}"), stop.Token)));
+        proxy.DropProbability = 0;
+
+        Assert.True(proxy.Drops > 0 && results.Sum(r => r.Failures) > 0, $"{proxy.Drops} dropped responses failed no write, so this test exercised nothing.");
+        await VerifyAsync(storage, results);
+    }
+
+    private static async Task VerifyAsync(RelationalGrainStorage storage, WriterResult[] results)
+    {
         Assert.True(results.Sum(r => r.Acknowledged) > 0, "No write succeeded.");
         foreach (var result in results)
         {
@@ -45,6 +80,46 @@ public abstract class ConnectionFailureTests(DatabaseFixture fixture)
             await WriteUntilAcknowledgedAsync(storage, result.GrainId, final);
             Assert.Equal(final, (await ReadUntilAvailableAsync(storage, result.GrainId, CancellationToken.None)).Value);
         }
+    }
+
+    /// <summary>
+    /// The database server's address, and a way to open the same database through another local port.
+    /// </summary>
+    private static (string Host, int Port, Func<int, (string ConnectionString, DbDataSource DataSource)> Connect) Route(TestDatabase database)
+    {
+        switch (database.Engine)
+        {
+            case "PostgreSql":
+            {
+                var builder = new NpgsqlConnectionStringBuilder(database.ConnectionString);
+                return (builder.Host!, builder.Port, port => Open(new NpgsqlConnectionStringBuilder(database.ConnectionString) { Host = "127.0.0.1", Port = port }.ToString(), NpgsqlDataSource.Create));
+            }
+
+            case "SqlServer":
+            {
+                var server = new SqlConnectionStringBuilder(database.ConnectionString).DataSource.Split(',');
+                return (server[0], server.Length > 1 ? int.Parse(server[1], System.Globalization.CultureInfo.InvariantCulture) : 1433,
+                    port => Open(new SqlConnectionStringBuilder(database.ConnectionString) { DataSource = $"127.0.0.1,{port}" }.ToString(), SqlClientFactory.Instance.CreateDataSource));
+            }
+
+#if !SCARLET_AOT_TESTS
+            case "MySql" when database.Driver == TestDrivers.MySqlData:
+            {
+                var builder = new MySql.Data.MySqlClient.MySqlConnectionStringBuilder(database.ConnectionString);
+                return (builder.Server, (int)builder.Port, port => Open(
+                    new MySql.Data.MySqlClient.MySqlConnectionStringBuilder(database.ConnectionString) { Server = "127.0.0.1", Port = (uint)port }.ToString(),
+                    MySql.Data.MySqlClient.MySqlClientFactory.Instance.CreateDataSource));
+            }
+#endif
+
+            default:
+            {
+                var builder = new MySqlConnectionStringBuilder(database.ConnectionString);
+                return (builder.Server, (int)builder.Port, port => Open(new MySqlConnectionStringBuilder(database.ConnectionString) { Server = "127.0.0.1", Port = (uint)port }.ToString(), cs => new MySqlDataSource(cs)));
+            }
+        }
+
+        static (string, DbDataSource) Open(string connectionString, Func<string, DbDataSource> create) => (connectionString, create(connectionString));
     }
 
     private static async Task<WriterResult> WriteAsync(RelationalGrainStorage storage, GrainId grainId, CancellationToken stop)
