@@ -18,14 +18,32 @@ using Scarlet.Orleans.Persistence.AdoNet;
 
 // Grain storage providers compared through IGrainStorage, on the same database and silo, with the default Orleans
 // serializer. Server engines come from the SCARLET_TEST_* administrative connection strings; SQLite always runs.
-var output = args.Length > 0 ? args[0] : "results.md";
-var engines = new List<Engine> { Engine.Sqlite() };
+var soak = Array.IndexOf(args, "--soak") is var at and >= 0 ? TimeSpan.FromMinutes(double.Parse(args[at + 1], CultureInfo.InvariantCulture)) : (TimeSpan?)null;
+var output = args.FirstOrDefault(a => a.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) ?? "results.md";
+var engines = soak is null ? new List<Engine> { Engine.Sqlite() } : [];
 foreach (var (name, variable) in new[] { ("PostgreSql", "SCARLET_TEST_POSTGRESQL"), ("SqlServer", "SCARLET_TEST_SQLSERVER"), ("MySql", "SCARLET_TEST_MYSQL") })
 {
     if (Environment.GetEnvironmentVariable(variable) is { Length: > 0 } admin)
     {
         engines.Add(await Engine.CreateAsync(name, admin));
     }
+}
+
+if (soak is { } soakDuration)
+{
+    try
+    {
+        await Soak.RunAsync(engines, soakDuration, output);
+    }
+    finally
+    {
+        foreach (var engine in engines)
+        {
+            await engine.DisposeAsync();
+        }
+    }
+
+    return;
 }
 
 var report = new StringBuilder()
@@ -285,6 +303,25 @@ internal sealed class Engine : IAsyncDisposable
                 await command.ExecuteNonQueryAsync();
             }
         }
+    }
+
+    /// <summary>The connections the database reports for this benchmark database, including the one counting.</summary>
+    public async Task<int> CountConnectionsAsync()
+    {
+        var sql = Name switch
+        {
+            "PostgreSql" => "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database()",
+            "SqlServer" => "SELECT COUNT(*) FROM sys.dm_exec_sessions WHERE database_id = DB_ID() AND is_user_process = 1",
+            "MySql" => "SELECT COUNT(*) FROM information_schema.processlist WHERE db = DATABASE()",
+            _ => null,
+        };
+        if (sql is null)
+        {
+            return 0;
+        }
+
+        await using var command = DataSource.CreateCommand(sql);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
     }
 
     public async ValueTask DisposeAsync()
