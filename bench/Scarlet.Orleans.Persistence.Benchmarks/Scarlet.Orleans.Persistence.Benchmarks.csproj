@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\Engine.cs" Link="Engine.cs" />
     <None Include="InBoxScripts\*.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

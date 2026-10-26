@@ -1,14 +1,9 @@
-using System.Data.Common;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using Microsoft.Data.SqlClient;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using MySqlConnector;
-using Npgsql;
 using Orleans;
 using Orleans.Hosting;
 using Orleans.Runtime;
@@ -169,86 +164,8 @@ internal static class Workloads
     private static double Percentile(double[] sorted, double percentile) => sorted[(int)Math.Min(sorted.Length - 1, Math.Floor(percentile * sorted.Length))];
 }
 
-/// <summary>
-/// A freshly created benchmark database on one engine, with the providers to compare on it.
-/// </summary>
-internal sealed class Engine : IAsyncDisposable
+internal sealed partial class Engine
 {
-    public const string ScarletAdoNet = "Scarlet ADO.NET";
-    public const string ScarletEntityFrameworkCore = "Scarlet EF Core";
-    public const string InBox = "Orleans ADO.NET";
-
-    private readonly Func<Task> drop;
-
-    private Engine(string name, string connectionString, DbDataSource dataSource, Func<Task> drop)
-    {
-        Name = name;
-        ConnectionString = connectionString;
-        DataSource = dataSource;
-        this.drop = drop;
-    }
-
-    public string Name { get; }
-
-    public string ConnectionString { get; }
-
-    public DbDataSource DataSource { get; }
-
-    /// <summary>The in-box provider supports SQLite through System.Data.SQLite only, so it is compared on server engines.</summary>
-    public IReadOnlyList<string> Providers => Name == "Sqlite" ? [ScarletAdoNet, ScarletEntityFrameworkCore] : [ScarletAdoNet, ScarletEntityFrameworkCore, InBox];
-
-    public static Engine Sqlite()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"scarlet-bench-{Guid.NewGuid():N}.db");
-        var connectionString = new SqliteConnectionStringBuilder { DataSource = path }.ToString();
-        return new Engine("Sqlite", connectionString, SqliteFactory.Instance.CreateDataSource(connectionString), () =>
-        {
-            SqliteConnection.ClearAllPools();
-            foreach (var file in new[] { path, path + "-wal", path + "-shm" })
-            {
-                File.Delete(file);
-            }
-
-            return Task.CompletedTask;
-        });
-    }
-
-    public static async Task<Engine> CreateAsync(string name, string admin)
-    {
-        var database = $"scarlet_bench_{Guid.NewGuid():N}"[..24];
-        switch (name)
-        {
-            case "PostgreSql":
-            {
-                await ExecuteAsync(NpgsqlDataSource.Create(admin), $"CREATE DATABASE \"{database}\"");
-                var cs = new NpgsqlConnectionStringBuilder(admin) { Database = database }.ToString();
-                return new Engine(name, cs, NpgsqlDataSource.Create(cs), () => ExecuteAsync(NpgsqlDataSource.Create(admin), $"DROP DATABASE IF EXISTS \"{database}\" WITH (FORCE)"));
-            }
-
-            case "SqlServer":
-            {
-                await ExecuteAsync(SqlClientFactory.Instance.CreateDataSource(admin), $"CREATE DATABASE [{database}]");
-                var cs = new SqlConnectionStringBuilder(admin) { InitialCatalog = database }.ToString();
-                return new Engine(name, cs, SqlClientFactory.Instance.CreateDataSource(cs), () =>
-                {
-                    SqlConnection.ClearAllPools();
-                    return ExecuteAsync(SqlClientFactory.Instance.CreateDataSource(admin), $"ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{database}]");
-                });
-            }
-
-            default:
-            {
-                await ExecuteAsync(new MySqlDataSource(admin), $"CREATE DATABASE `{database}`");
-                var cs = new MySqlConnectionStringBuilder(admin) { Database = database }.ToString();
-                return new Engine(name, cs, new MySqlDataSource(cs), () =>
-                {
-                    MySqlConnection.ClearAllPools();
-                    return ExecuteAsync(new MySqlDataSource(admin), $"DROP DATABASE IF EXISTS `{database}`");
-                });
-            }
-        }
-    }
-
     public void AddProviders(ISiloBuilder silo)
     {
         silo.AddScarletAdoNetGrainStorage(ScarletAdoNet, options =>
@@ -280,93 +197,6 @@ internal sealed class Engine : IAsyncDisposable
                 };
                 options.ConnectionString = ConnectionString;
             });
-        }
-    }
-
-    /// <summary>
-    /// Runs the in-box provider's scripts, splitting MySQL's at its <c>DELIMITER</c> directives as the <c>mysql</c> client does.
-    /// </summary>
-    public async Task InstallInBoxSchemaAsync()
-    {
-        if (!Providers.Contains(InBox))
-        {
-            return;
-        }
-
-        var prefix = Name switch { "PostgreSql" => "PostgreSQL", "SqlServer" => "SQLServer", _ => "MySQL" };
-        foreach (var script in new[] { $"{prefix}-Main.sql", $"{prefix}-Persistence.sql" })
-        {
-            var text = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "InBoxScripts", script));
-            foreach (var statement in Name == "MySql" ? SplitMySql(text) : [text])
-            {
-                await using var command = DataSource.CreateCommand(statement);
-                await command.ExecuteNonQueryAsync();
-            }
-        }
-    }
-
-    /// <summary>The connections the database reports for this benchmark database, including the one counting.</summary>
-    public async Task<int> CountConnectionsAsync()
-    {
-        var sql = Name switch
-        {
-            "PostgreSql" => "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database()",
-            "SqlServer" => "SELECT COUNT(*) FROM sys.dm_exec_sessions WHERE database_id = DB_ID() AND is_user_process = 1",
-            "MySql" => "SELECT COUNT(*) FROM information_schema.processlist WHERE db = DATABASE()",
-            _ => null,
-        };
-        if (sql is null)
-        {
-            return 0;
-        }
-
-        await using var command = DataSource.CreateCommand(sql);
-        return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await DataSource.DisposeAsync();
-        await drop();
-    }
-
-    private static IEnumerable<string> SplitMySql(string script)
-    {
-        var delimiter = ";";
-        var current = new StringBuilder();
-        foreach (var line in script.ReplaceLineEndings("\n").Split('\n'))
-        {
-            if (line.TrimStart().StartsWith("DELIMITER ", StringComparison.OrdinalIgnoreCase))
-            {
-                delimiter = line.Trim()["DELIMITER ".Length..].Trim();
-                continue;
-            }
-
-            current.AppendLine(line);
-            if (line.TrimEnd().EndsWith(delimiter, StringComparison.Ordinal))
-            {
-                var statement = current.ToString().Trim();
-                current.Clear();
-                statement = statement[..^delimiter.Length].Trim();
-                if (statement.Length > 0)
-                {
-                    yield return statement;
-                }
-            }
-        }
-
-        if (current.ToString().Trim() is { Length: > 0 } rest)
-        {
-            yield return rest;
-        }
-    }
-
-    private static async Task ExecuteAsync(DbDataSource dataSource, string sql)
-    {
-        await using (dataSource)
-        {
-            await using var command = dataSource.CreateCommand(sql);
-            await command.ExecuteNonQueryAsync();
         }
     }
 }

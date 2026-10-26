@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Compares reminder tables through IReminderTable on the same databases. See README.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1303;CA1812;CA2007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\Engine.cs" Link="Engine.cs" />
+    <None Include="..\Scarlet.Orleans.Persistence.Benchmarks\InBoxScripts\*-Main.sql" Link="InBoxScripts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="InBoxScripts\*.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Reminders\Scarlet.Orleans.Reminders.AdoNet\Scarlet.Orleans.Reminders.AdoNet.csproj" />
+    <ProjectReference Include="..\..\src\Reminders\Scarlet.Orleans.Reminders.EntityFrameworkCore\Scarlet.Orleans.Reminders.EntityFrameworkCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Orleans.Sdk" />
+    <PackageReference Include="Microsoft.Orleans.TestingHost" />
+    <PackageReference Include="Microsoft.Orleans.Reminders.AdoNet" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microting.EntityFrameworkCore.MySql" />
+  </ItemGroup>
+
+</Project>

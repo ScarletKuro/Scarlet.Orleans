@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/bench/">
     <Project Path="bench/Scarlet.Orleans.Persistence.Benchmarks/Scarlet.Orleans.Persistence.Benchmarks.csproj" />
+    <Project Path="bench/Scarlet.Orleans.Reminders.Benchmarks/Scarlet.Orleans.Reminders.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Persistence/">
