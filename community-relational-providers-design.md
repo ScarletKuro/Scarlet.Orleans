@@ -358,25 +358,31 @@ The ADO.NET flavour aims to be fully NativeAOT- and trimming-compatible from the
 
 **Table**
 
-- `orleans_grain_directory`: `cluster_id`, `grain_id_hash` (key), `grain_id` (bytes, section 4.3), `grain_id_display`, `silo_address`, `activation_id`, `membership_version`, `created_on`.
+- `orleans_grain_directory`: `key_hash` (key), `grain_identity` (bytes, section 4.3), `scope_hash`, `silo_hash`, `cluster_id`, `directory_name` and `grain_id` (display text only), `silo_address`, `activation_id` (16 bytes), `membership_version`.
+- Index `(scope_hash, silo_hash, key_hash)`, which finds a silo's entries in key order.
 
 **Guarantees** (the `IGrainDirectory` contract)
 
-- `Register` is first-writer-wins: it returns the existing registration if one exists, otherwise inserts and returns the new one. It never overwrites another activation.
+- `Register` is first-writer-wins: it returns the existing registration if one exists, otherwise inserts and returns the new one. It never overwrites another activation, unless the caller names that activation as the previous address.
 - `Unregister` removes the entry only if the activation ID matches.
 - `UnregisterSilos` removes every entry for the given silos.
 
 **Implementation rules**
 
-- `Register` is `INSERT` with a plain duplicate-key failure handled as "already registered, read it back". No `INSERT … ON DUPLICATE KEY UPDATE`, `MERGE` or upsert that takes gap or range locks on the index.
-- Run at READ COMMITTED to minimise gap locking where the engine supports it.
-- Deadlock victims are `Transient` and retried. Because `Register` is idempotent from the caller's view, a retry is always safe.
-- `UnregisterSilos` deletes in bounded batches ordered by key, so large silo failures do not hold locks for long.
+- The identity is the cluster ID, directory name, grain type and grain key (section 4.3), so named directories and clusters sharing a table never see each other's entries. `scope_hash` hashes the cluster ID and directory name. Every row read is verified against the identity; a mismatch is a collision and nothing is returned, replaced or removed.
+- `Register` is `INSERT` with a plain duplicate-key failure handled as "already registered, read it back"; if that entry is removed before it can be read, the insert is tried again. No `INSERT … ON DUPLICATE KEY UPDATE`, `MERGE` or upsert that takes gap or range locks on the index.
+- `Register` with a previous address is one conditional `UPDATE` matching the previous activation ID, so no other activation can register in between, as it could if the previous entry were removed first. If it matches nothing, the plain registration follows.
+- Deadlock victims are `Transient` and retried (`TransientRetry`), since the server rolled the statement back. Statements autocommit, at the engine's default isolation.
+- `UnregisterSilos` deletes in batches of 500 ordered by key, matching the silo's hash and its exact address, so large silo failures do not hold locks for long. Each engine bounds the delete its own way: `ORDER BY … LIMIT` on MySQL and MariaDB, an ordered `TOP` on SQL Server, and an ordered subquery on PostgreSQL and SQLite; EF Core translates an ordered `Take`.
+- Activation IDs are stored as their GUID's 16 bytes, exact on every engine; silo addresses as their parsable text, which is also compared, with a hash for the index.
+- Writes follow the retry and cancellation rules of persistence (sections 4.7 and 7): a registration canceled after it committed is reported as registered.
 
 **Tests**
 
-- A conformance suite for first-writer-wins under concurrency.
-- The concurrent register/lookup/unregister chaos test on every engine, including MySQL 8.4. It must run in CI for this component, not only as an excluded stress test, because it is the only test that exposes the gap-lock deadlock.
+- The five facts of Orleans' `GrainDirectoryTests` base, which Orleans does not ship as a test kit, and first-writer-wins under concurrency.
+- The concurrent register/replace/lookup/unregister chaos test on every engine, including MySQL 8.4. It runs in CI for this component, not only as an excluded stress test, because it is the only test that exposes the gap-lock deadlock.
+- `UnregisterSilos` across batch boundaries, directory and cluster isolation, long and binary grain IDs, forced collisions, ambient transactions, cancellation after commit, and registrations through killed sessions and lost responses.
+- Silos registering, deactivating and stopping through the public hosting extensions, with named directories: the in-process test cluster replaces a directory registered as the default.
 
 ### 5.3 Persistence
 
