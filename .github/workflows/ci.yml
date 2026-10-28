@@ -20,6 +20,8 @@ env:
 # Every job runs the whole suite. SQLite always runs; a server engine runs where its SCARLET_TEST_* connection string is
 # set, and SCARLET_TEST_REQUIRE makes a job fail rather than skip when its own engine is missing.
 # Images are pinned by digest and updated deliberately (design section 9.3).
+# Jobs with a database server run the test projects one at a time: together they open more connections than the
+# servers' defaults allow (100 on PostgreSQL, 151 on MySQL).
 
 jobs:
   build:
@@ -68,7 +70,7 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
-      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION
+      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1
 
   sqlserver:
     name: SQL Server ${{ matrix.version }}
@@ -100,7 +102,7 @@ jobs:
       # The images ship different sqlcmd paths across versions, so readiness is read from the server log instead.
       - name: Wait for SQL Server
         run: timeout 120 bash -c 'until docker logs "${{ job.services.db.id }}" 2>&1 | grep -q "SQL Server is now ready for client connections"; do sleep 2; done'
-      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION
+      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1
 
   mysql:
     name: MySQL ${{ matrix.version }}
@@ -128,7 +130,7 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
-      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION
+      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1
 
   mariadb:
     name: MariaDB ${{ matrix.version }}
@@ -157,7 +159,7 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
-      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION
+      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1
 
   native-aot:
     name: NativeAOT, all engines

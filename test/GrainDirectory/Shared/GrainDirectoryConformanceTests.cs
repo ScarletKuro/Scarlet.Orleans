@@ -128,7 +128,7 @@ public abstract class GrainDirectoryConformanceTests(DatabaseFixture fixture)
         await StartedAsync();
         var onA = Enumerable.Range(0, RelationalGrainDirectory.SiloBatchSize * 2 + 7).Select(_ => Address(NewGrain(), SiloA)).ToArray();
         var onB = Enumerable.Range(0, 5).Select(_ => Address(NewGrain(), SiloB)).ToArray();
-        foreach (var chunk in onA.Concat(onB).Chunk(64))
+        foreach (var chunk in onA.Concat(onB).Chunk(16))
         {
             await Task.WhenAll(chunk.Select(a => Directory.Register(a, CancellationToken)));
         }

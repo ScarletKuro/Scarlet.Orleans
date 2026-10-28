@@ -30,7 +30,9 @@ public static class ConnectionFaults
             {
                 var server = new SqlConnectionStringBuilder(database.ConnectionString).DataSource.Split(',');
                 return (server[0], server.Length > 1 ? int.Parse(server[1], System.Globalization.CultureInfo.InvariantCulture) : 1433,
-                    port => Open(new SqlConnectionStringBuilder(database.ConnectionString) { DataSource = $"127.0.0.1,{port}" }.ToString(), SqlClientFactory.Instance.CreateDataSource));
+                    // After a failed open, SqlClient fails every open for seconds by default, which would leave a
+                    // lossy test with no successful write at all.
+                    port => Open(new SqlConnectionStringBuilder(database.ConnectionString) { DataSource = $"127.0.0.1,{port}", PoolBlockingPeriod = PoolBlockingPeriod.NeverBlock }.ToString(), SqlClientFactory.Instance.CreateDataSource));
             }
 
 #if !SCARLET_AOT_TESTS
