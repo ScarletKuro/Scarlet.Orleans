@@ -36,7 +36,12 @@ internal sealed partial class RelationalGrainDirectory(
     /// <summary>
     /// How many times a registration tries again when the entry it found is removed before it can be read.
     /// </summary>
-    private const int RegisterAttempts = 3;
+    /// <remarks>
+    /// Every retry means another activation of the grain registered and unregistered in between, so the directory as a
+    /// whole makes progress, and a hot grain under heavy churn can need several. The bound only stops a fault, such as a
+    /// duplicate-key rule that matches other errors, from looping forever.
+    /// </remarks>
+    private const int RegisterAttempts = 100;
 
     /// <summary>
     /// The most rows one statement deletes when a silo's entries are removed.

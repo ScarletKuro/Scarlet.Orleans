@@ -67,9 +67,10 @@ public static class ConnectionFaults
             {
                 killed += await KillOnceAsync(database);
             }
-            catch (Exception) when (!stop.IsCancellationRequested)
+            catch (Exception)
             {
-                // The killer's own connection may come from a pool another kill just broke.
+                // The killer's own connection may come from a pool another kill just broke, and a session it listed can end
+                // before it is killed. Either way that session is gone, as the test wants.
             }
 
             await Task.Delay(KillInterval, CancellationToken.None);
