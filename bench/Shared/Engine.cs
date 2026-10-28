@@ -102,7 +102,13 @@ internal sealed partial class Engine : IAsyncDisposable
             var text = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "InBoxScripts", script));
             // Only scripts defining routines need client-side DELIMITER handling. Execute ordinary scripts as a
             // batch so semicolons inside quoted OrleansQuery values remain part of those values.
-            foreach (var statement in Name == "MySql" && text.Contains("DELIMITER ", StringComparison.OrdinalIgnoreCase) ? SplitMySql(text) : [text])
+            var statements = Name switch
+            {
+                "MySql" when text.Contains("DELIMITER ", StringComparison.OrdinalIgnoreCase) => SplitMySql(text),
+                "SqlServer" => SplitSqlServer(text),
+                _ => [text],
+            };
+            foreach (var statement in statements)
             {
                 await using var command = DataSource.CreateCommand(statement);
                 await command.ExecuteNonQueryAsync();
@@ -133,6 +139,33 @@ internal sealed partial class Engine : IAsyncDisposable
     {
         await DataSource.DisposeAsync();
         await drop();
+    }
+
+    // GO is a client-side batch separator. Grain directory scripts use it around CREATE PROCEDURE statements.
+    private static IEnumerable<string> SplitSqlServer(string script)
+    {
+        var current = new StringBuilder();
+        foreach (var line in script.ReplaceLineEndings("\n").Split('\n'))
+        {
+            if (line.Trim().Equals("GO", StringComparison.OrdinalIgnoreCase))
+            {
+                if (current.ToString().Trim() is { Length: > 0 } batch)
+                {
+                    yield return batch;
+                }
+
+                current.Clear();
+            }
+            else
+            {
+                current.AppendLine(line);
+            }
+        }
+
+        if (current.ToString().Trim() is { Length: > 0 } rest)
+        {
+            yield return rest;
+        }
     }
 
     private static IEnumerable<string> SplitMySql(string script)

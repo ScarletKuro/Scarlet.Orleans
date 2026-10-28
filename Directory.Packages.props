@@ -8,6 +8,7 @@
     <PackageVersion Include="Microsoft.Orleans.Runtime" Version="$(OrleansVersion)" />
     <PackageVersion Include="Microsoft.Orleans.Sdk" Version="$(OrleansVersion)" />
     <PackageVersion Include="Microsoft.Orleans.TestingHost" Version="$(OrleansVersion)" />
+    <PackageVersion Include="Microsoft.Orleans.GrainDirectory.AdoNet" Version="$(OrleansVersion)-alpha.1" />
     <PackageVersion Include="Microsoft.Orleans.Persistence.AdoNet" Version="$(OrleansVersion)" />
     <PackageVersion Include="Microsoft.Orleans.Reminders.AdoNet" Version="$(OrleansVersion)" />
     <PackageVersion Include="Microsoft.Orleans.Reminders" Version="$(OrleansVersion)" />
