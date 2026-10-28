@@ -142,8 +142,8 @@ internal sealed partial class RelationalGrainDirectory(
             {
                 var address = silo.ToParsableString();
                 var siloHash = DirectoryEntry.SiloHashOf(address);
-                // A batch can delete fewer rows than it selected, when entries move to a live silo in between, so only an
-                // empty batch shows that the silo has none left.
+                // A batch can delete fewer rows than it selected, or none, when entries move to a live silo in between, so
+                // only a fresh check after a batch that deleted nothing shows that the silo has none left.
                 int deleted;
                 do
                 {
@@ -151,7 +151,7 @@ internal sealed partial class RelationalGrainDirectory(
                     deleted = await store.DeleteSiloBatchAsync(scope.Hash, siloHash, address, SiloBatchSize, cancellationToken).ConfigureAwait(false);
                     removed += deleted;
                 }
-                while (deleted > 0);
+                while (deleted > 0 || await store.HasSiloEntriesAsync(scope.Hash, siloHash, address, cancellationToken).ConfigureAwait(false));
             }
 
             if (removed > 0)

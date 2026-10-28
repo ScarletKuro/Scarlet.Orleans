@@ -178,6 +178,28 @@ public abstract class GrainDirectoryConformanceTests(DatabaseFixture fixture)
         Assert.Null(await Directory.Lookup(stays.GrainId, CancellationToken));
     }
 
+    /// <summary>
+    /// A batch whose selected entries all moved to a live silo before the delete deletes nothing, while more of the dead
+    /// silo's entries remain: the cleanup must go on until none are left.
+    /// </summary>
+    [Fact]
+    public async Task UnregisterSilos_AfterABatchThatDeletedNothing_RemovesTheRest()
+    {
+        var store = new FirstBatchMovedStore(FlavourDirectory.CreateStore(fixture.Database, TestSchemaMode.Apply));
+        var cleaning = FlavourDirectory.Create(store, "default", clusterId);
+        await cleaning.InitializeAsync(CancellationToken);
+        var onA = Enumerable.Range(0, 5).Select(_ => Address(NewGrain(), SiloA)).ToArray();
+        foreach (var address in onA)
+        {
+            await cleaning.Register(address, CancellationToken);
+        }
+
+        await cleaning.UnregisterSilos([SiloA], CancellationToken);
+
+        Assert.True(store.EmptyBatchReported);
+        Assert.All(await Task.WhenAll(onA.Select(a => cleaning.Lookup(a.GrainId, CancellationToken))), Assert.Null);
+    }
+
     [Fact]
     public async Task UnregisterSilos_WithNoSilos_DoesNothing()
     {
@@ -326,6 +348,40 @@ public abstract class GrainDirectoryConformanceTests(DatabaseFixture fixture)
         SiloAddress = silo ?? address.SiloAddress,
         MembershipVersion = version ?? address.MembershipVersion,
     };
+
+    /// <summary>
+    /// Reports the first batch as having deleted nothing, as when every entry it selected moved to a live silo first.
+    /// </summary>
+    private sealed class FirstBatchMovedStore(IGrainDirectoryStore inner) : IGrainDirectoryStore
+    {
+        public bool EmptyBatchReported { get; private set; }
+
+        public Task InitializeAsync(CancellationToken cancellationToken) => inner.InitializeAsync(cancellationToken);
+
+        public Task<StoredDirectoryEntry?> ReadAsync(DirectoryKey key, CancellationToken cancellationToken) => inner.ReadAsync(key, cancellationToken);
+
+        public Task<bool> TryInsertAsync(DirectoryKey key, DirectoryEntry entry, CancellationToken cancellationToken) => inner.TryInsertAsync(key, entry, cancellationToken);
+
+        public Task<bool> TryReplaceAsync(DirectoryKey key, byte[] expectedActivationId, DirectoryEntry entry, CancellationToken cancellationToken) =>
+            inner.TryReplaceAsync(key, expectedActivationId, entry, cancellationToken);
+
+        public Task<bool> TryDeleteAsync(DirectoryKey key, byte[] expectedActivationId, CancellationToken cancellationToken) =>
+            inner.TryDeleteAsync(key, expectedActivationId, cancellationToken);
+
+        public Task<int> DeleteSiloBatchAsync(byte[] scopeHash, byte[] siloHash, string siloAddress, int limit, CancellationToken cancellationToken)
+        {
+            if (!EmptyBatchReported)
+            {
+                EmptyBatchReported = true;
+                return Task.FromResult(0);
+            }
+
+            return inner.DeleteSiloBatchAsync(scopeHash, siloHash, siloAddress, limit, cancellationToken);
+        }
+
+        public Task<bool> HasSiloEntriesAsync(byte[] scopeHash, byte[] siloHash, string siloAddress, CancellationToken cancellationToken) =>
+            inner.HasSiloEntriesAsync(scopeHash, siloHash, siloAddress, cancellationToken);
+    }
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object value, DbType type)
     {

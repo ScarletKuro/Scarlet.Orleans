@@ -49,13 +49,19 @@ internal interface IGrainDirectoryStore
     Task<bool> TryDeleteAsync(DirectoryKey key, byte[] expectedActivationId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Deletes up to <paramref name="limit"/> rows of a directory that point at a silo, in key order. Returns how many it deleted.
+    /// Deletes up to <paramref name="limit"/> rows of a directory that point at a silo, in key order. Returns how many it
+    /// deleted, which can be fewer than it selected, or none, when selected rows move to another silo in between.
     /// </summary>
     /// <remarks>
     /// A silo that held many activations leaves many rows. Deleting them in bounded batches keeps each statement's locks
     /// short, so registrations on live silos are not held up behind it.
     /// </remarks>
     Task<int> DeleteSiloBatchAsync(byte[] scopeHash, byte[] siloHash, string siloAddress, int limit, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns whether any row of a directory points at a silo.
+    /// </summary>
+    Task<bool> HasSiloEntriesAsync(byte[] scopeHash, byte[] siloHash, string siloAddress, CancellationToken cancellationToken);
 }
 
 /// <param name="Identity">The identity bytes stored with the row (<see cref="DirectoryKey"/>).</param>

@@ -142,6 +142,14 @@ internal sealed class EntityFrameworkCoreGrainDirectoryStore<TContext>(
                 .ConfigureAwait(false);
         }, cancellationToken);
 
+    public async Task<bool> HasSiloEntriesAsync(byte[] scopeHash, byte[] siloHash, string siloAddress, CancellationToken cancellationToken)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await context.Set<GrainDirectoryRecord>()
+            .AnyAsync(r => r.ScopeHash == scopeHash && r.SiloHash == siloHash && r.SiloAddress == siloAddress, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     /// <summary>
     /// <c>r =&gt; r.KeyHash == keys[0] || r.KeyHash == keys[1] || …</c>, with each key a parameter.
     /// </summary>

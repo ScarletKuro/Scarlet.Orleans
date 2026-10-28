@@ -124,5 +124,8 @@ internal static class FlavourDirectory
 
         public Task<int> DeleteSiloBatchAsync(byte[] scopeHash, byte[] siloHash, string siloAddress, int limit, CancellationToken cancellationToken) =>
             inner.DeleteSiloBatchAsync(scopeHash, siloHash, siloAddress, limit, cancellationToken);
+
+        public Task<bool> HasSiloEntriesAsync(byte[] scopeHash, byte[] siloHash, string siloAddress, CancellationToken cancellationToken) =>
+            inner.HasSiloEntriesAsync(scopeHash, siloHash, siloAddress, cancellationToken);
     }
 }

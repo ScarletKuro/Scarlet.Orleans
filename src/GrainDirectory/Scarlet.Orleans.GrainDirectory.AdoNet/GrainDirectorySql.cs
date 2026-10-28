@@ -27,6 +27,8 @@ internal static class GrainDirectorySql
 
     private const string SiloMatch = "scope_hash = @scope_hash AND silo_hash = @silo_hash AND silo_address = @silo_address";
 
+    public const string SiloHasEntries = $"SELECT CASE WHEN EXISTS (SELECT 1 FROM {Table} WHERE {SiloMatch}) THEN 1 ELSE 0 END";
+
     /// <summary>
     /// Inserts a row, reporting an existing key either as zero affected rows or as a duplicate-key error
     /// (<see cref="InsertReportsDuplicateAsError"/>).

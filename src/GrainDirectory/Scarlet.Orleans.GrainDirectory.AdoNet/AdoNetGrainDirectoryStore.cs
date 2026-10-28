@@ -90,6 +90,16 @@ internal sealed class AdoNetGrainDirectoryStore(DbDataSource dataSource, string?
             return await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }, cancellationToken);
 
+    public Task<bool> HasSiloEntriesAsync(byte[] scopeHash, byte[] siloHash, string siloAddress, CancellationToken cancellationToken) =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
+        {
+            await using var command = dataSource.CreateCommand(GrainDirectorySql.SiloHasEntries);
+            command.AddParameter("scope_hash", scopeHash, DbType.Binary);
+            command.AddParameter("silo_hash", siloHash, DbType.Binary);
+            command.AddParameter("silo_address", siloAddress, DbType.String);
+            return Convert.ToInt32(await command.ExecuteScalarAsync(ct).ConfigureAwait(false), System.Globalization.CultureInfo.InvariantCulture) == 1;
+        }, cancellationToken);
+
     private static void AddMatch(DbCommand command, DirectoryKey key, byte[] expectedActivationId)
     {
         command.AddParameter("key_hash", key.Hash, DbType.Binary);
