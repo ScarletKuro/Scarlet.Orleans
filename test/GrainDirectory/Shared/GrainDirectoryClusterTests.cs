@@ -31,6 +31,31 @@ public sealed class SecondDirectoryGrain : Grain, ISecondDirectoryGrain
     public Task<string> GetSiloAsync() => Task.FromResult(GrainContext.Address.SiloAddress!.ToParsableString());
 }
 
+public interface IPingGrain : IGrainWithGuidKey
+{
+    Task<int> PingAsync();
+
+    Task<int> ProxyPingAsync(IPingGrain other);
+
+    Task<string> GetSiloAsync();
+}
+
+/// <summary>
+/// Counts the calls its activation received, so a new activation shows as a reset count.
+/// </summary>
+[RandomPlacement]
+[GrainDirectory(GrainDirectoryName = GrainDirectoryClusterTests.FirstDirectory)]
+public sealed class PingGrain : Grain, IPingGrain
+{
+    private int count;
+
+    public Task<int> PingAsync() => Task.FromResult(++count);
+
+    public Task<int> ProxyPingAsync(IPingGrain other) => other.PingAsync();
+
+    public Task<string> GetSiloAsync() => Task.FromResult(GrainContext.Address.SiloAddress!.ToParsableString());
+}
+
 /// <summary>
 /// Silos registering their activations through the package's public hosting extensions, in two directories chosen by
 /// <see cref="GrainDirectoryAttribute"/>. Each test deploys its own cluster on a fresh fixture.
@@ -147,6 +172,43 @@ public abstract class GrainDirectoryClusterTests(DatabaseFixture fixture) : IAsy
             return true;
         }, "Entries still point at the stopped silo.");
         Assert.All(await Task.WhenAll(grains.Select(g => g.GetSiloAsync())), silo => Assert.NotEqual(stoppedAddress, silo));
+    }
+
+    /// <summary>
+    /// Orleans' <c>MultipleGrainDirectoriesTests.PingGrain</c>: each silo reaches the other's activation through the
+    /// directory, and when a silo stops, the activations it held are replaced while those on live silos survive.
+    /// </summary>
+    [Fact]
+    public async Task PingGrain_SilosShareActivations_AndAStoppedSilosAreReplaced()
+    {
+        fixture.Require();
+        var primary = cluster!.Silos[0].SiloAddress.ToParsableString();
+        var secondary = cluster.Silos[1].SiloAddress.ToParsableString();
+        var onPrimary = await PingGrainOnAsync(primary);
+        var onSecondary = await PingGrainOnAsync(secondary);
+
+        var primaryCount = await onPrimary.PingAsync();
+        var secondaryCount = await onSecondary.PingAsync();
+        Assert.Equal(++primaryCount, await onSecondary.ProxyPingAsync(onPrimary));
+        Assert.Equal(++secondaryCount, await onPrimary.ProxyPingAsync(onSecondary));
+
+        await cluster.StopSiloAsync(cluster.Silos[1], TestContext.Current.CancellationToken);
+
+        Assert.Equal(++primaryCount, await onPrimary.PingAsync());
+        Assert.Equal(1, await onSecondary.PingAsync());
+        Assert.Equal(primary, await onSecondary.GetSiloAsync());
+    }
+
+    private async Task<IPingGrain> PingGrainOnAsync(string silo)
+    {
+        while (true)
+        {
+            var grain = Client.GetGrain<IPingGrain>(Guid.NewGuid());
+            if (await grain.GetSiloAsync() == silo)
+            {
+                return grain;
+            }
+        }
     }
 
     private async Task<List<(string Directory, string Silo)>> EntriesAsync(string grainId)

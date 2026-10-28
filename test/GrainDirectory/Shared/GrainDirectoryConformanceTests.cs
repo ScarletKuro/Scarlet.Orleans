@@ -238,6 +238,36 @@ public abstract class GrainDirectoryConformanceTests(DatabaseFixture fixture)
     }
 
     /// <summary>
+    /// Orleans' <c>AdoNetGrainDirectory_ChaosTest</c>: 10,000 overlapping lifecycles on 10 grains from 10 silos, each
+    /// registering, looking up, and unregistering whatever registration won. Every winner unregisters itself, so the
+    /// directory must end empty: an entry left behind would point at an activation that no longer exists.
+    /// </summary>
+    [Fact]
+    public async Task ChaosTest_OverlappingLifecycles_LeaveTheDirectoryEmpty()
+    {
+        await StartedAsync();
+        var grains = Enumerable.Range(0, 10).Select(i => GrainId.Create("MyGrainType", $"MyGrainKey{i}-{Guid.NewGuid():N}")).ToArray();
+        var silos = Enumerable.Range(0, 10).Select(i => SiloAddress.FromParsableString($"127.0.0.{i}:11111@123456")).ToArray();
+
+        await Parallel.ForAsync(0, 10_000, new ParallelOptions { MaxDegreeOfParallelism = 16, CancellationToken = CancellationToken }, async (_, ct) =>
+        {
+            var grainId = grains[Random.Shared.Next(grains.Length)];
+            var registered = await Directory.Register(Address(grainId, silos[Random.Shared.Next(silos.Length)]), ct);
+            for (var lookups = Random.Shared.Next(10); lookups > 0; lookups--)
+            {
+                await Directory.Lookup(grainId, ct);
+            }
+
+            if (registered is not null)
+            {
+                await Directory.Unregister(registered, ct);
+            }
+        });
+
+        Assert.Equal(0, Convert.ToInt32(await ScalarAsync($"SELECT COUNT(*) FROM {GrainDirectorySchema.TableName} WHERE cluster_id = '{clusterId}'"), System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
     /// A row under one grain's key holding another grain's identity is what a 128-bit hash collision would leave.
     /// Every operation on the colliding grain fails or matches nothing, and the other grain's entry is left as it was.
     /// </summary>
