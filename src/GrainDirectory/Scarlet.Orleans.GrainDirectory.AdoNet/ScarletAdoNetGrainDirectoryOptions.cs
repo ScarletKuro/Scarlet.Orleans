@@ -1,5 +1,4 @@
 using System.Data.Common;
-using Orleans;
 
 namespace Scarlet.Orleans.GrainDirectory.AdoNet;
 

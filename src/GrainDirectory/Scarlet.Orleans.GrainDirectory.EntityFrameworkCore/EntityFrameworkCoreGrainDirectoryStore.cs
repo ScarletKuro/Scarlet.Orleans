@@ -138,7 +138,7 @@ internal sealed class EntityFrameworkCoreGrainDirectoryStore<TContext>(
                 .Where(r => r.ScopeHash == scopeHash && r.SiloHash == siloHash && r.SiloAddress == siloAddress)
                 .Where(AnyKey(keys));
             return await new SingleAttemptExecutionStrategy(context)
-                .ExecuteAsync(c => batch.ExecuteDeleteAsync(c), ct)
+                .ExecuteAsync(batch.ExecuteDeleteAsync, ct)
                 .ConfigureAwait(false);
         }, cancellationToken);
 

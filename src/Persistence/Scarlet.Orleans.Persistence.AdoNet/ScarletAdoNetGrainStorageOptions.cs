@@ -1,5 +1,4 @@
 using System.Data.Common;
-using Orleans;
 using Orleans.Storage;
 
 namespace Scarlet.Orleans.Persistence.AdoNet;
