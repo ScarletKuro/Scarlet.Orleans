@@ -1,0 +1,312 @@
+using System.Collections.Concurrent;
+using System.Data;
+using System.Transactions;
+using Orleans.GrainDirectory;
+using Orleans.Runtime;
+
+namespace Scarlet.Orleans.GrainDirectory.Tests;
+
+/// <summary>
+/// The <see cref="IGrainDirectory"/> contract, on one engine and flavour. The first five tests are those of Orleans'
+/// <c>GrainDirectoryTests</c> base (MIT, .NET Foundation), which Orleans does not ship as a test kit.
+/// </summary>
+public abstract class GrainDirectoryConformanceTests(DatabaseFixture fixture)
+{
+    private static readonly SiloAddress SiloA = SiloAddress.FromParsableString("10.0.23.12:1000@5678");
+    private static readonly SiloAddress SiloB = SiloAddress.FromParsableString("10.0.23.14:1000@4583");
+
+    private readonly string clusterId = $"cluster-{Guid.NewGuid():N}";
+    private RelationalGrainDirectory? directory;
+
+    private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
+
+    private RelationalGrainDirectory Directory => directory ??= Create("default");
+
+    [Fact]
+    public async Task RegisterLookupUnregisterLookup()
+    {
+        var expected = Address(NewGrain(), SiloA);
+
+        Assert.Equal(expected, await (await StartedAsync()).Register(expected, null, CancellationToken));
+        Assert.Equal(expected, await Directory.Lookup(expected.GrainId, CancellationToken));
+
+        await Directory.Unregister(expected, CancellationToken);
+
+        Assert.Null(await Directory.Lookup(expected.GrainId, CancellationToken));
+    }
+
+    [Fact]
+    public async Task DoNotOverwriteEntry()
+    {
+        var expected = Address(NewGrain(), SiloA);
+        var differentActivation = Address(expected.GrainId, SiloA);
+        var differentSilo = Copy(expected, silo: SiloB);
+
+        await StartedAsync();
+        Assert.Equal(expected, await Directory.Register(expected, null, CancellationToken));
+        Assert.Equal(expected, await Directory.Register(differentActivation, null, CancellationToken));
+        Assert.Equal(expected, await Directory.Register(differentSilo, null, CancellationToken));
+        Assert.Equal(expected, await Directory.Lookup(expected.GrainId, CancellationToken));
+    }
+
+    [Fact]
+    public async Task OverwriteEntryIfMatch()
+    {
+        var initial = Address(NewGrain(), SiloA);
+        var differentActivation = Address(initial.GrainId, SiloA);
+        var differentSilo = Copy(initial, silo: SiloB);
+
+        await StartedAsync();
+        Assert.Equal(initial, await Directory.Register(initial, differentSilo, CancellationToken));
+        Assert.Equal(differentActivation, await Directory.Register(differentActivation, initial, CancellationToken));
+        Assert.Equal(differentActivation, await Directory.Register(differentSilo, initial, CancellationToken));
+        Assert.Equal(differentActivation, await Directory.Lookup(initial.GrainId, CancellationToken));
+    }
+
+    [Fact]
+    public async Task DoNotDeleteDifferentActivationIdEntry()
+    {
+        var expected = Address(NewGrain(), SiloA);
+        var otherEntry = Address(expected.GrainId, SiloA);
+
+        await StartedAsync();
+        Assert.Equal(expected, await Directory.Register(expected, null, CancellationToken));
+        await Directory.Unregister(otherEntry, CancellationToken);
+        Assert.Equal(expected, await Directory.Lookup(expected.GrainId, CancellationToken));
+    }
+
+    [Fact]
+    public async Task LookupNotFound() =>
+        Assert.Null(await (await StartedAsync()).Lookup(NewGrain(), CancellationToken));
+
+    [Fact]
+    public async Task Register_KeepsTheMembershipVersion()
+    {
+        var address = Copy(Address(NewGrain(), SiloA), version: new MembershipVersion(long.MaxValue - 1));
+        await (await StartedAsync()).Register(address, CancellationToken);
+
+        Assert.Equal(address.MembershipVersion, (await Directory.Lookup(address.GrainId, CancellationToken))!.MembershipVersion);
+    }
+
+    [Fact]
+    public async Task Register_FromManyActivationsAtOnce_HasOneWinnerForAll()
+    {
+        var grainId = NewGrain();
+        var candidates = Enumerable.Range(0, 16).Select(i => Address(grainId, i % 2 == 0 ? SiloA : SiloB)).ToArray();
+        await StartedAsync();
+
+        var results = await Task.WhenAll(candidates.Select(c => Directory.Register(c, CancellationToken)));
+
+        var winner = Assert.Single(results.Distinct());
+        Assert.Contains(winner, candidates);
+        Assert.Equal(winner, await Directory.Lookup(grainId, CancellationToken));
+    }
+
+    [Fact]
+    public async Task Directories_AndClusters_DoNotSeeEachOthersEntries()
+    {
+        var grainId = NewGrain();
+        await StartedAsync();
+        var named = Create("named");
+        var otherCluster = FlavourDirectory.Create(fixture.Database, "default", $"other-{Guid.NewGuid():N}", TestSchemaMode.None);
+        await named.InitializeAsync(CancellationToken);
+        await otherCluster.InitializeAsync(CancellationToken);
+        var mine = Address(grainId, SiloA);
+
+        await Directory.Register(mine, CancellationToken);
+        await named.UnregisterSilos([SiloA], CancellationToken);
+        await otherCluster.UnregisterSilos([SiloA], CancellationToken);
+
+        Assert.Null(await named.Lookup(grainId, CancellationToken));
+        Assert.Null(await otherCluster.Lookup(grainId, CancellationToken));
+        Assert.Equal(mine, await Directory.Lookup(grainId, CancellationToken));
+    }
+
+    [Fact]
+    public async Task UnregisterSilos_RemovesEveryEntryOfThoseSilosOnly_AcrossBatches()
+    {
+        await StartedAsync();
+        var onA = Enumerable.Range(0, RelationalGrainDirectory.SiloBatchSize * 2 + 7).Select(_ => Address(NewGrain(), SiloA)).ToArray();
+        var onB = Enumerable.Range(0, 5).Select(_ => Address(NewGrain(), SiloB)).ToArray();
+        foreach (var chunk in onA.Concat(onB).Chunk(64))
+        {
+            await Task.WhenAll(chunk.Select(a => Directory.Register(a, CancellationToken)));
+        }
+
+        await Directory.UnregisterSilos([SiloA], CancellationToken);
+
+        Assert.All(await Task.WhenAll(onA.Take(20).Concat(onA.TakeLast(20)).Select(a => Directory.Lookup(a.GrainId, CancellationToken))), Assert.Null);
+        Assert.Equal(onB, await Task.WhenAll(onB.Select(a => Directory.Lookup(a.GrainId, CancellationToken))));
+        Assert.Equal(onB.Length, Convert.ToInt32(await ScalarAsync($"SELECT COUNT(*) FROM {GrainDirectorySchema.TableName} WHERE cluster_id = '{clusterId}'"), System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public async Task UnregisterSilos_WithNoSilos_DoesNothing()
+    {
+        var address = Address(NewGrain(), SiloA);
+        await (await StartedAsync()).Register(address, CancellationToken);
+
+        await Directory.UnregisterSilos([], CancellationToken);
+
+        Assert.Equal(address, await Directory.Lookup(address.GrainId, CancellationToken));
+    }
+
+    [Fact]
+    public async Task LongAndBinaryGrainIds_RoundTrip()
+    {
+        await StartedAsync();
+        foreach (var grainId in new[] { GrainId.Create(new string('t', 300), new string('k', 10_000)), GrainId.Create(new GrainType([0xFF, 0x00, 0xC3]), new IdSpan([0x00, 0xFE])) })
+        {
+            var address = Address(grainId, SiloA);
+
+            Assert.Equal(address, await Directory.Register(address, CancellationToken));
+            Assert.Equal(address, await Directory.Lookup(grainId, CancellationToken));
+        }
+    }
+
+    [Fact]
+    public async Task Operations_InsideAnAmbientTransactionThatRollsBack_StayCommitted()
+    {
+        var address = Address(NewGrain(), SiloA);
+        await StartedAsync();
+        using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+        {
+            await Directory.Register(address, CancellationToken);
+        }
+
+        Assert.Equal(address, await Directory.Lookup(address.GrainId, CancellationToken));
+    }
+
+    /// <summary>
+    /// A row under one grain's key holding another grain's identity is what a 128-bit hash collision would leave.
+    /// Every operation on the colliding grain fails or matches nothing, and the other grain's entry is left as it was.
+    /// </summary>
+    [Fact]
+    public async Task HashCollision_NeitherReturnsNorReplacesTheOtherGrainsEntry()
+    {
+        var victim = Address(NewGrain(), SiloA);
+        var intruder = Address(NewGrain(), SiloB);
+        await (await StartedAsync()).Register(victim, CancellationToken);
+        await ExecuteAsync(
+            $"UPDATE {GrainDirectorySchema.TableName} SET key_hash = @intruder WHERE key_hash = @victim",
+            ("intruder", Key(intruder.GrainId).Hash),
+            ("victim", Key(victim.GrainId).Hash));
+
+        await Assert.ThrowsAsync<GrainDirectoryKeyCollisionException>(() => Directory.Lookup(intruder.GrainId, CancellationToken));
+        await Assert.ThrowsAsync<GrainDirectoryKeyCollisionException>(() => Directory.Register(intruder, CancellationToken));
+        await Assert.ThrowsAsync<GrainDirectoryKeyCollisionException>(() => Directory.Register(intruder, victim, CancellationToken));
+        await Directory.Unregister(Copy(victim, grainId: intruder.GrainId), CancellationToken);
+
+        var row = await ScalarAsync($"SELECT COUNT(*) FROM {GrainDirectorySchema.TableName} WHERE cluster_id = '{clusterId}' AND silo_address = '{SiloA.ToParsableString()}'");
+        Assert.Equal(1, Convert.ToInt32(row, System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Many grains registered, replaced, looked up and unregistered at once, as silos do while activations move. On MySQL
+    /// this is where upserts and gap locks deadlock; every call must succeed, and every grain must end with an entry one
+    /// of its activations registered.
+    /// </summary>
+    [Fact]
+    public async Task ConcurrentRegisterLookupUnregister_NeverFailsAndKeepsOneEntryPerGrain()
+    {
+        await StartedAsync();
+        var grains = Enumerable.Range(0, 16).Select(_ => NewGrain()).ToArray();
+        var registered = new ConcurrentDictionary<GrainId, ConcurrentBag<GrainAddress>>();
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+
+        var workers = Enumerable.Range(0, 16).Select(worker => Task.Run(async () =>
+        {
+            var random = new Random(worker);
+            var operations = 0;
+            while (!stop.IsCancellationRequested)
+            {
+                var grainId = grains[random.Next(grains.Length)];
+                var candidate = Address(grainId, random.Next(2) == 0 ? SiloA : SiloB);
+                registered.GetOrAdd(grainId, _ => []).Add(candidate);
+                switch (random.Next(4))
+                {
+                    case 0:
+                        await Directory.Register(candidate, CancellationToken);
+                        break;
+                    case 1:
+                        var current = await Directory.Lookup(grainId, CancellationToken);
+                        await Directory.Register(candidate, current, CancellationToken);
+                        break;
+                    case 2:
+                        if (await Directory.Lookup(grainId, CancellationToken) is { } existing)
+                        {
+                            await Directory.Unregister(existing, CancellationToken);
+                        }
+
+                        break;
+                    default:
+                        await Directory.Lookup(grainId, CancellationToken);
+                        break;
+                }
+
+                operations++;
+            }
+
+            return operations;
+        })).ToArray();
+
+        Assert.True((await Task.WhenAll(workers)).Sum() > 0);
+        foreach (var grainId in grains)
+        {
+            if (await Directory.Lookup(grainId, CancellationToken) is { } entry)
+            {
+                Assert.Contains(entry, registered[grainId]);
+            }
+        }
+    }
+
+    private async Task<RelationalGrainDirectory> StartedAsync()
+    {
+        await Directory.InitializeAsync(CancellationToken);
+        return Directory;
+    }
+
+    private RelationalGrainDirectory Create(string name) =>
+        FlavourDirectory.Create(fixture.Database, name, clusterId, TestSchemaMode.Apply);
+
+    private DirectoryKey Key(GrainId grainId) => DirectoryKey.Create(new DirectoryScope(clusterId, "default"), grainId);
+
+    private static GrainId NewGrain() => GrainId.Parse("user/somerandomuser_" + Guid.NewGuid().ToString("N"), System.Globalization.CultureInfo.InvariantCulture);
+
+    private static GrainAddress Address(GrainId grainId, SiloAddress silo) => new()
+    {
+        ActivationId = ActivationId.NewId(),
+        GrainId = grainId,
+        SiloAddress = silo,
+        MembershipVersion = new MembershipVersion(51),
+    };
+
+    private static GrainAddress Copy(GrainAddress address, GrainId? grainId = null, SiloAddress? silo = null, MembershipVersion? version = null) => new()
+    {
+        ActivationId = address.ActivationId,
+        GrainId = grainId ?? address.GrainId,
+        SiloAddress = silo ?? address.SiloAddress,
+        MembershipVersion = version ?? address.MembershipVersion,
+    };
+
+    private async Task<object?> ScalarAsync(string sql)
+    {
+        await using var command = fixture.Database.DataSource.CreateCommand(sql);
+        return await command.ExecuteScalarAsync(CancellationToken);
+    }
+
+    private async Task ExecuteAsync(string sql, params (string Name, byte[] Value)[] parameters)
+    {
+        await using var command = fixture.Database.DataSource.CreateCommand(sql);
+        foreach (var (name, value) in parameters)
+        {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = name;
+            parameter.Value = value;
+            parameter.DbType = DbType.Binary;
+            command.Parameters.Add(parameter);
+        }
+
+        await command.ExecuteNonQueryAsync(CancellationToken);
+    }
+}
