@@ -140,6 +140,44 @@ public abstract class GrainDirectoryConformanceTests(DatabaseFixture fixture)
         Assert.Equal(onB.Length, Convert.ToInt32(await ScalarAsync($"SELECT COUNT(*) FROM {GrainDirectorySchema.TableName} WHERE cluster_id = '{clusterId}'"), System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    /// <summary>
+    /// A replacement moves one of a dead silo's entries to a live silo while the cleanup waits on that row: the cleanup
+    /// must not delete the live registration. On PostgreSQL, a delete of keys selected beforehand would.
+    /// </summary>
+    [Fact]
+    public async Task UnregisterSilos_SparesAnEntryMovedToALiveSiloWhileItWaits()
+    {
+        var moved = Address(NewGrain(), SiloA);
+        var stays = Address(NewGrain(), SiloA);
+        await (await StartedAsync()).Register(moved, CancellationToken);
+        await Directory.Register(stays, CancellationToken);
+        var replacement = Address(moved.GrainId, SiloB);
+        var entry = DirectoryEntry.From(replacement);
+
+        await using var connection = await fixture.Database.DataSource.OpenConnectionAsync(CancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(CancellationToken);
+        await using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText = $"UPDATE {GrainDirectorySchema.TableName} SET silo_address = @silo_address, silo_hash = @silo_hash, activation_id = @activation_id WHERE key_hash = @key_hash";
+            AddParameter(update, "silo_address", entry.SiloAddress, DbType.String);
+            AddParameter(update, "silo_hash", entry.SiloHash, DbType.Binary);
+            AddParameter(update, "activation_id", entry.ActivationId, DbType.Binary);
+            AddParameter(update, "key_hash", Key(moved.GrainId).Hash, DbType.Binary);
+            Assert.Equal(1, await update.ExecuteNonQueryAsync(CancellationToken));
+        }
+
+        // On another thread: Microsoft.Data.Sqlite blocks the calling thread while it waits for a lock.
+        var cleanup = Task.Run(() => Directory.UnregisterSilos([SiloA], CancellationToken), CancellationToken);
+        await Task.Delay(500, CancellationToken);
+        Assert.False(cleanup.IsCompleted, "The cleanup did not wait for the replacement, so this test exercised nothing.");
+        await transaction.CommitAsync(CancellationToken);
+        await cleanup;
+
+        Assert.Equal(replacement, await Directory.Lookup(moved.GrainId, CancellationToken));
+        Assert.Null(await Directory.Lookup(stays.GrainId, CancellationToken));
+    }
+
     [Fact]
     public async Task UnregisterSilos_WithNoSilos_DoesNothing()
     {
@@ -288,6 +326,15 @@ public abstract class GrainDirectoryConformanceTests(DatabaseFixture fixture)
         SiloAddress = silo ?? address.SiloAddress,
         MembershipVersion = version ?? address.MembershipVersion,
     };
+
+    private static void AddParameter(System.Data.Common.DbCommand command, string name, object value, DbType type)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        parameter.DbType = type;
+        command.Parameters.Add(parameter);
+    }
 
     private async Task<object?> ScalarAsync(string sql)
     {

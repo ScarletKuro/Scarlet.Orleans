@@ -1,4 +1,6 @@
 using System.Data.Common;
+using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -107,22 +109,65 @@ internal sealed class EntityFrameworkCoreGrainDirectoryStore<TContext>(
         }, cancellationToken);
 
     /// <summary>
-    /// Deletes a bounded batch through an ordered, limited query, which EF Core translates for each provider.
+    /// Selects a batch of a silo's keys, then deletes those rows that still belong to the silo.
     /// </summary>
+    /// <remarks>
+    /// The delete tests the silo itself. A row selected while it belonged to the dead silo can be moved to a live one by
+    /// a concurrent replacement before the delete locks it; a delete of the selected keys alone would then remove the live
+    /// registration, which is what EF Core's translation of an ordered <c>Take</c> into a delete does on PostgreSQL. The
+    /// keys are compared one by one, an equality every provider translates.
+    /// </remarks>
     public Task<int> DeleteSiloBatchAsync(byte[] scopeHash, byte[] siloHash, string siloAddress, int limit, CancellationToken cancellationToken) =>
         TransientRetry.ExecuteAsync(timeProvider, async ct =>
         {
             await using var context = await contextFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            var keys = await context.Set<GrainDirectoryRecord>()
+                .AsNoTracking()
+                .Where(r => r.ScopeHash == scopeHash && r.SiloHash == siloHash && r.SiloAddress == siloAddress)
+                .OrderBy(r => r.KeyHash)
+                .Take(limit)
+                .Select(r => r.KeyHash)
+                .ToListAsync(ct)
+                .ConfigureAwait(false);
+            if (keys.Count == 0)
+            {
+                return 0;
+            }
+
+            var batch = context.Set<GrainDirectoryRecord>()
+                .Where(r => r.ScopeHash == scopeHash && r.SiloHash == siloHash && r.SiloAddress == siloAddress)
+                .Where(AnyKey(keys));
             return await new SingleAttemptExecutionStrategy(context)
-                .ExecuteAsync(
-                    c => context.Set<GrainDirectoryRecord>()
-                        .Where(r => r.ScopeHash == scopeHash && r.SiloHash == siloHash && r.SiloAddress == siloAddress)
-                        .OrderBy(r => r.KeyHash)
-                        .Take(limit)
-                        .ExecuteDeleteAsync(c),
-                    ct)
+                .ExecuteAsync(c => batch.ExecuteDeleteAsync(c), ct)
                 .ConfigureAwait(false);
         }, cancellationToken);
+
+    /// <summary>
+    /// <c>r =&gt; r.KeyHash == keys[0] || r.KeyHash == keys[1] || …</c>, with each key a parameter.
+    /// </summary>
+    /// <remarks>
+    /// The comparisons are combined as a balanced tree, so the SQL nests about log2(n) levels deep rather than n, which
+    /// engines limit.
+    /// </remarks>
+    private static Expression<Func<GrainDirectoryRecord, bool>> AnyKey(List<byte[]> keys)
+    {
+        var record = Expression.Parameter(typeof(GrainDirectoryRecord), "r");
+        var keyHash = Expression.Property(record, nameof(GrainDirectoryRecord.KeyHash));
+        return Expression.Lambda<Func<GrainDirectoryRecord, bool>>(Any(0, keys.Count), record);
+
+        Expression Any(int start, int count)
+        {
+            if (count == 1)
+            {
+                // A captured value, rather than a constant, so EF Core sends each key as a parameter.
+                var value = Expression.Field(Expression.Constant(new StrongBox<byte[]>(keys[start])), nameof(StrongBox<byte[]>.Value));
+                return Expression.Equal(keyHash, value);
+            }
+
+            var half = count / 2;
+            return Expression.OrElse(Any(start, half), Any(start + half, count - half));
+        }
+    }
 
     private async Task<bool> InsertAsync(DirectoryKey key, DirectoryEntry entry, CancellationToken cancellationToken)
     {

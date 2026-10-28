@@ -44,9 +44,14 @@ internal static class GrainDirectorySql
     /// Deletes up to <paramref name="limit"/> of a silo's rows in key order, so concurrent batches lock rows in the same order.
     /// </summary>
     /// <remarks>
-    /// Each engine bounds a delete differently: MySQL and MariaDB take <c>ORDER BY … LIMIT</c> on the delete itself, SQL
-    /// Server deletes through an ordered <c>TOP</c>, and PostgreSQL and SQLite delete the keys an ordered subquery selects.
-    /// The limit is a constant of the provider, so it is written into the statement.
+    /// <para>
+    /// MySQL and MariaDB take <c>ORDER BY … LIMIT</c> on the delete itself, which tests the silo on each row it locks. The
+    /// other engines delete the keys an ordered subquery selects, and the delete tests the silo again: a row selected
+    /// while it belonged to the dead silo can be moved to a live one by a concurrent replacement before the delete locks
+    /// it, and PostgreSQL then rechecks only the delete's own condition on the new row version, so without the second
+    /// test it would delete the live registration.
+    /// </para>
+    /// <para>The limit is a constant of the provider, so it is written into the statement.</para>
     /// </remarks>
     public static string DeleteSiloBatch(RelationalEngine engine, int limit)
     {
@@ -54,8 +59,8 @@ internal static class GrainDirectorySql
         return engine switch
         {
             RelationalEngine.MySql or RelationalEngine.MariaDb => $"DELETE FROM {Table} WHERE {SiloMatch} ORDER BY key_hash LIMIT {n}",
-            RelationalEngine.SqlServer => $"WITH batch AS (SELECT TOP ({n}) * FROM {Table} WHERE {SiloMatch} ORDER BY key_hash) DELETE FROM batch",
-            _ => $"DELETE FROM {Table} WHERE key_hash IN (SELECT key_hash FROM {Table} WHERE {SiloMatch} ORDER BY key_hash LIMIT {n})",
+            RelationalEngine.SqlServer => $"DELETE FROM {Table} WHERE {SiloMatch} AND key_hash IN (SELECT TOP ({n}) key_hash FROM {Table} WHERE {SiloMatch} ORDER BY key_hash)",
+            _ => $"DELETE FROM {Table} WHERE {SiloMatch} AND key_hash IN (SELECT key_hash FROM {Table} WHERE {SiloMatch} ORDER BY key_hash LIMIT {n})",
         };
     }
 
