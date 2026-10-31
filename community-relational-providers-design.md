@@ -5,7 +5,7 @@ A design for a community set of Orleans providers, published as `Scarlet.Orleans
 - **EF Core**, for applications that already use EF and want generated migrations and one data-access stack.
 - **ADO.NET**, for lean hosts (console apps, devices, containers) and NativeAOT, with the fewest dependencies.
 
-It covers clustering, grain directory, persistence, reminders and streaming. It is informed by the problems found and fixed in the in-box `Orleans.*.AdoNet` providers, and by the EF Core providers proposed in dotnet/orleans#8654.
+It covers clustering, grain directory, persistence, reminders, transactions and streaming. It is informed by the problems found and fixed in the in-box `Orleans.*.AdoNet` providers, and by the EF Core providers proposed in dotnet/orleans#8654.
 
 Status: design draft. Nothing here is implemented yet.
 
@@ -43,10 +43,10 @@ Each row is a real problem found in `Orleans.*.AdoNet`, and the rule this design
 | MySQL 8.4 rejects `CREATE TEMPORARY TABLE … SELECT … FOR UPDATE`, so streaming consumers never received messages. MariaDB accepted it, and CI only ran MariaDB. | Streaming (MySQL) | No temp-table batch selection. Test every supported version of every engine, MariaDB and MySQL separately (section 9). |
 | Positional arguments passed in the wrong order to `EvictStreamMessages`. Dead letters deleted after ~17 minutes instead of 7 days, poisoned messages never evicted. | Streaming (MySQL) | No positional cross-routine calls. All SQL is parameterised by name in C# (section 4.8). |
 | The C# `EvictStreamMessagesAsync` binds `MaxCount` while the stored query expects `@BatchSize`. Fails on every database if called. | Streaming | Every query has a typed C# wrapper, and every wrapper is exercised against every engine (section 9). |
-| Stream message IDs used as cache sequence tokens. Redelivered and late-committed messages carry lower IDs, so the cache treats them as missed and a purge confirms them undelivered. | Streaming | Cache positions are assigned by the receiver and only ever increase. Database IDs are never cache tokens (section 5.5). |
-| Two cached attempts of the same message produced a confirmation batch with a duplicate key, which every engine rejected. | Streaming | Confirmations are coalesced per message, keeping the latest receipt (section 5.5). |
+| Stream message IDs used as cache sequence tokens. Redelivered and late-committed messages carry lower IDs, so the cache treats them as missed and a purge confirms them undelivered. | Streaming | Cache positions are assigned by the receiver and only ever increase. Database IDs are never cache tokens (section 5.6). |
+| Two cached attempts of the same message produced a confirmation batch with a duplicate key, which every engine rejected. | Streaming | Confirmations are coalesced per message, keeping the latest receipt (section 5.6). |
 | Grain directory `INSERT … ON DUPLICATE KEY UPDATE` deadlocks under concurrent register/unregister on MySQL 8.4 (InnoDB gap locks). | Grain directory (MySQL) | Registration avoids upserts that take gap locks, classifies deadlocks as retryable, and is chaos-tested on every engine (section 5.2). |
-| `FailStreamMessage` takes only the message ID, not the dequeue count, so a failure reported for an old attempt can move or redeliver a message that has since been dequeued again by another receiver. | Streaming | Every operation on a dequeued message carries its receipt, `Fail` included (section 5.5). |
+| `FailStreamMessage` takes only the message ID, not the dequeue count, so a failure reported for an old attempt can move or redeliver a message that has since been dequeued again by another receiver. | Streaming | Every operation on a dequeued message carries its receipt, `Fail` included (section 5.6). |
 | Clustering joins an ambient `TransactionScope` (dotnet/orleans#7765). | All | Provider operations suppress ambient transactions by default (section 4.6). |
 | The MySQL streaming migration only worked through the test harness's script splitter, not through the `mysql` client. | Migrations | Migrations are tested through the real client semantics (section 8). |
 | SQLite stored versions past `int.MaxValue` that C# could not read back, leaving grains unreadable after upgrade. | Persistence (SQLite, Oracle) | Column types and C# types match exactly, enforced by schema tests (section 8). |
@@ -59,17 +59,18 @@ The pattern across almost all of these: **dialect-specific SQL, written by hand 
 
 ```
 Orleans contracts      IMembershipTable  IGatewayListProvider  IGrainDirectory
-                       IGrainStorage     IReminderTable        IQueueAdapterFactory ...
+                       IGrainStorage     IReminderTable        ITransactionalStateStorageFactory
+                       IQueueAdapterFactory ...
                                    │
 Component logic        src/{Component}/Shared: linked into both packages of the component
                        - Orleans contract implementation for that component
                        - component rules: membership versions, first-writer-wins registration,
-                         state ETag checks, reminder ranges, streaming receiver (positions,
+                         state ETag checks, reminder ranges, transactional store order, streaming receiver (positions,
                          receipts, confirmation coalescing), batch container, failure handler
                        - raw SQL that both flavours run (section 7.1)
                                    │
 Store contracts        IMembershipStore  IGrainDirectoryStore  IGrainStateStore
-(narrow, internal)     IReminderStore    IStreamQueueStore
+(narrow, internal)     IReminderStore    ITransactionalStateStore  IStreamQueueStore
                                    │
 Backends               Scarlet.Orleans.{Component}.AdoNet       Scarlet.Orleans.{Component}.EntityFrameworkCore
                        - per-dialect SQL text in C#             - DbContext model, no shipped migrations
@@ -88,7 +89,7 @@ Shared infrastructure  src/Shared: linked into every package, not a package itse
 
 Shared code is compiled into each package from linked source files (`<Compile Include="..\..\Shared\**\*.cs" LinkBase="Shared" />`), the same technique the in-box Orleans ADO.NET providers use for `src/AdoNet/Shared`. There is no core package.
 
-- **Shared infrastructure** (`src/Shared`) is linked into all ten packages.
+- **Shared infrastructure** (`src/Shared`) is linked into all twelve packages.
 - **Component logic** (`src/{Component}/Shared`) is linked into that component's ADO.NET and EF Core packages, and nowhere else.
 
 Why linked source rather than a shared package:
@@ -122,7 +123,7 @@ Rules that keep linked source manageable:
 
 Packages are split **by component and flavour**, like the in-box Orleans providers (`Microsoft.Orleans.Clustering.AdoNet` and so on), but **not by database**. All IDs start with `Scarlet.Orleans.`. Reserve the `Scarlet.*` ID prefix on nuget.org before the first release.
 
-**Why split by component.** A single package for all five components would force every user to take `Microsoft.Orleans.Streaming` and `Microsoft.Orleans.Reminders`, even when they only use clustering and persistence. Splitting keeps dependencies, trimmed size and AOT surface to what is actually used.
+**Why split by component.** A single package for all six components would force every user to take `Microsoft.Orleans.Streaming`, `Microsoft.Orleans.Reminders` and `Microsoft.Orleans.Transactions`, even when they only use clustering and persistence. Splitting keeps dependencies, trimmed size and AOT surface to what is actually used.
 
 **Why not by database.** Each package contains every supported engine:
 
@@ -136,17 +137,19 @@ Packages are split **by component and flavour**, like the in-box Orleans provide
 | `Scarlet.Orleans.GrainDirectory.AdoNet` | Grain directory, schema scripts and migrations | Orleans runtime | Yes |
 | `Scarlet.Orleans.Persistence.AdoNet` | Persistence, schema scripts and migrations | Orleans runtime | Yes |
 | `Scarlet.Orleans.Reminders.AdoNet` | Reminders, schema scripts and migrations | Orleans reminders | Yes |
+| `Scarlet.Orleans.Transactions.AdoNet` | Transactional state storage, schema scripts and migrations | Orleans transactions | Yes |
 | `Scarlet.Orleans.Streaming.AdoNet` | Streaming, schema scripts and migrations | Orleans streaming | Yes |
 | **EF Core flavour** (all engines in each package) | | | |
 | `Scarlet.Orleans.Clustering.EntityFrameworkCore` | Clustering EF model and store, `ApplyOrleansModel()` | Orleans runtime, EF Core | No |
 | `Scarlet.Orleans.GrainDirectory.EntityFrameworkCore` | Grain directory EF model and store | Orleans runtime, EF Core | No |
 | `Scarlet.Orleans.Persistence.EntityFrameworkCore` | Persistence EF model and store | Orleans runtime, EF Core | No |
 | `Scarlet.Orleans.Reminders.EntityFrameworkCore` | Reminders EF model and store | Orleans reminders, EF Core | No |
+| `Scarlet.Orleans.Transactions.EntityFrameworkCore` | Transactional state EF model and store | Orleans transactions, EF Core | No |
 | `Scarlet.Orleans.Streaming.EntityFrameworkCore` | Streaming EF model and store, running the shared raw SQL for dequeue and eviction | Orleans streaming, EF Core | No |
 | **Tools** | | | |
 | `Scarlet.Orleans.Relational.Tool` | .NET tool `orleans-db`: `migrate`, `status`, `script` (section 8.1) and `import` from the in-box Orleans tables (section 11) | The ADO.NET packages | Not applicable |
 
-That is 11 packages: ten runtime packages and a tool. No runtime package references another package of this set, and there is no shared assembly between them. Users install only the components and flavour they use, and the names mirror the in-box Orleans packages.
+That is 13 packages: twelve runtime packages and a tool. No runtime package references another package of this set, and there is no shared assembly between them. Users install only the components and flavour they use, and the names mirror the in-box Orleans packages.
 
 The store conformance kit is not published. It lives in the repository's test projects, which link the store contracts. Store contracts are internal, so writing a third-party backend against them is not supported. If that need appears, a deliberately designed public package can expose them later.
 
@@ -211,6 +214,7 @@ silo.AddScarletAdoNetGrainStorage("Default", options =>
 - Identity always includes every distinguishing part:
   - persistence: service ID, grain type, state name, grain ID;
   - reminders: service ID, grain ID, reminder name;
+  - transactional state: service ID, grain type, state name, grain ID, as persistence, under its own prefix;
   - grain directory: cluster ID, grain ID;
   - membership: cluster ID, silo address and generation.
 - **Identities are bytes, not text.** An Orleans `GrainId` is a `GrainType` and an `IdSpan` key, both arbitrary byte sequences; they are usually UTF-8 but nothing guarantees it, and decoding invalid UTF-8 replaces bytes with U+FFFD, which would collapse distinct identities. So:
@@ -236,6 +240,7 @@ silo.AddScarletAdoNetGrainStorage("Default", options =>
 
 - Provider operations run inside `TransactionScope(TransactionScopeOption.Suppress)` by default, so an application's ambient transaction never captures Orleans infrastructure writes (dotnet/orleans#7765). An option allows opting in, for users who want persistence writes in their own transaction.
 - Every multi-statement operation uses an explicit transaction with a documented isolation level. Default is READ COMMITTED; any operation that needs more says so in code.
+- Transactional state storage is the one component whose writes are multi-statement transactions by design: a store changes one state row and any number of entry rows, and must be atomic for `Load` to stay simple (section 5.5).
 - Lock ordering is fixed and documented per component (for example "version row, then member row"), so concurrent operations cannot deadlock by acquiring locks in opposite orders.
 
 ### 4.7 Errors and retries
@@ -246,7 +251,7 @@ silo.AddScarletAdoNetGrainStorage("Default", options =>
 - **Commit ambiguity.** Such a failure leaves the outcome unknown. A blind retry is wrong there: a conditional write would see its own committed ETag and report a false conflict, and an insert would see its own row and report "already exists". Unknown outcomes are resolved where that is possible, and reported as unknown where it is not:
   - **ETag-guarded writes** (membership, grain state, reminders) re-read the row. If it holds the ETag the client generated for this write (section 4.2), the write committed and the call succeeds; if it still holds the expected ETag, the write did not commit and is retried. Any other value, or a missing row, does **not** prove a conflict: this write may have committed and another writer may have changed or deleted the row since. Persistence avoids reaching this state rather than reporting it: it never repeats a write after a connection failure, so an unmatched write is only ever settled after a repeat by a driver, and the original failure, or a cancellation, surfaces instead (section 7). When it does occur, persistence reports `InconsistentStateException`, which has the effect an "outcome unknown" error would have, since the grain re-reads its state either way; for membership, Orleans re-reads the table. No extra operation log is kept to settle it.
   - **Deletes by key and ETag** follow the same rule: a row still holding the expected ETag means the delete did not commit; a missing or changed row is "outcome unknown".
-  - **Stream enqueue** carries a client-generated `message_key` with a unique constraint, so a retry that hits its own key while the message still exists is recognised as the same message (section 5.5).
+  - **Stream enqueue** carries a client-generated `message_key` with a unique constraint, so a retry that hits its own key while the message still exists is recognised as the same message (section 5.6).
   - **Operations that are idempotent by nature** (confirm by receipt, release by receipt, evict) are retried as is; repeating them changes nothing.
   - Operations that fit none of these surface the error to Orleans rather than guess.
 - The conformance suite injects connection failures before send, after send and after commit for every store operation and asserts the outcome (section 9).
@@ -437,7 +442,63 @@ The ADO.NET flavour aims to be fully NativeAOT- and trimming-compatible from the
 - A forced collision (a row moved under another reminder's key) proves that every operation on the colliding reminder fails and leaves the existing reminder untouched.
 - Upserts through killed sessions and lost responses, cancellation after commit, and the EF Core model against the scripts, columns and indexes.
 
-### 5.5 Streaming
+### 5.5 Transactions
+
+Storage for `Microsoft.Orleans.Transactions`: the `ITransactionalStateStorage<TState>` behind every `[TransactionalState]` and every `ITransactionCommitter<TService>`. Orleans finds it through a keyed `ITransactionalStateStorageFactory`, so the packages register one under the storage name used in `[TransactionalState("state", "TransactionStore")]`.
+
+**What already works without this component.** When no factory is registered under a name, Orleans falls back to the `IGrainStorage` of that name, wrapped by `TransactionalStateStorageProviderWrapper`. So `AddScarletAdoNetGrainStorage("TransactionStore")` already stores transactional state today: the committed state, every pending state and the metadata are serialized as one grain state record, and each `Store` rewrites that whole record with one ETag-checked write. That is correct, and is the baseline a dedicated component has to beat. It loses on write volume: a state with `n` prepared versions writes `n + 1` copies of `TState` on every store, including versions that did not change, and the committed state is copied again on every commit. A dedicated store writes only what changed. The READMEs document the wrapper path, and the transactions TestKit runs against it as well (see Tests), so the dedicated component can be measured against it before it ships.
+
+**The contract, as Orleans uses it**
+
+- `Load()` returns one coherent snapshot: ETag, committed state and sequence number, metadata (the clock and the commit records), and the pending prepare records in sequence order. Pending records at or below the committed sequence number are left out.
+- `Store(expectedETag, metadata, statesToPrepare, commitUpTo, abortAfter)` checks the ETag, then removes pending records above `abortAfter`, adds or replaces the prepared records, replaces the metadata, advances the committed sequence number to `commitUpTo` (whose prepare record must exist), and discards records the commit made obsolete. It returns the new ETag.
+- After a failed `Store`, Orleans always calls `Load()` before storing again (`TransactionQueue` aborts and restores, marking the outcome as in doubt). The contract allows a `Store` to be non-atomic, as long as every partial result is recoverable; Azure Table and DynamoDB need that, because their batches are bounded, and they guard paginated reads with boundary rows.
+- An ETag mismatch is reported as `InconsistentStateException`, which Orleans treats as a storage conflict rather than an unknown error.
+- There is no delete. Transactional state lives as long as the grain's data does, as in every other provider.
+
+**Tables**
+
+- `orleans_transactional_state`: one row per state. `key_hash` (key), `state_identity` (bytes, section 4.3), `service_id`, `state_name` and `grain_id` (display text only), `etag`, `committed_sequence_id` (`bigint`), `metadata` (bytes), `modified_on`.
+- `orleans_transactional_state_entry`: one row per prepared version. Key `(key_hash, sequence_id)`; `transaction_id` (text), `timestamp_ticks` (`bigint`, UTC ticks, so the logical clock round-trips exactly), `transaction_manager` (bytes, null when this state is the transaction manager), `payload` (bytes).
+- The committed state is the entry at `committed_sequence_id`, kept until a later commit makes it obsolete, as in the Azure Table provider. A commit therefore moves a number, and never copies a payload. Sequence number 0 means "nothing committed yet", and `Load` returns `new TState()`.
+
+**Implementation rules**
+
+- **Every `Store` is one database transaction.** A relational database has no batch limit, so the component does not use the contract's licence to be non-atomic. `Load` then never sees a partial store, and needs none of the boundary-row machinery of the Azure and DynamoDB providers. The transaction runs at `READ COMMITTED`, set explicitly: MySQL and MariaDB default to `REPEATABLE READ`, where the range deletes below take next-key locks that reach into the neighbouring state's rows, the same gap-lock problem as the grain directory (section 2).
+- **The state row is the lock.** The first statement is `UPDATE orleans_transactional_state SET etag = @new, metadata = @m, committed_sequence_id = @c, modified_on = @now WHERE key_hash = @k AND state_identity = @id AND etag = @expected`, or an `INSERT` when `expectedETag` is null. No row updated, or a duplicate key, is `InconsistentStateException`, and the transaction rolls back. Every writer takes this row first, so the entry statements that follow need no concurrency control of their own, and lock order is fixed: state row, then entries.
+- **Then the entries, in the order the Azure provider uses**: delete entries above `abortAfter`; delete and insert the prepared entries at or above the obsolete bound (`commitUpTo`, or the committed sequence number), so a replacement is an ordinary insert; check that the entry at `commitUpTo` exists, or fail with the corruption error Orleans' wrapper uses; delete entries below the obsolete bound. Each is plain `INSERT` and `DELETE`, on every engine.
+- **The store keeps no cache.** The Azure and DynamoDB stores cache the loaded rows and must refuse to `Store` until a failed one is followed by a `Load`. Here every decision is made by the statements above, against the database, so a stale cache cannot exist, and the ETag alone rejects a store that follows an unresolved failure.
+- **`Load` reads in one transaction at `REPEATABLE READ`**: the state row first, then its entries. That is one snapshot on PostgreSQL, MySQL, MariaDB and SQLite. On SQL Server, with locking reads, the shared lock on the state row is held to the end of the transaction, and every store updates that row first, so no store can commit between the two reads. No table hint is needed, so both flavours use the same shape. A deadlock victim is retried, since reads are safe to repeat.
+- **Retries.** A transient error before `COMMIT` rolls back and repeats the whole transaction (section 4.7). A connection failure during `COMMIT` is not settled by the store: Orleans' contract already treats any failed `Store` as in doubt and recovers through `Load`, so the error surfaces. `Load` and `Store` take no cancellation token, so there is no cancellation path to settle either.
+- **Identity** is the service ID, grain type, grain key and state name (section 4.3), the same parts as persistence, so a transactional state never shares a key with a grain state of the same name in a shared database: the components use separate tables and separately prefixed identities. Every row read is verified, and a mismatch is the collision error.
+- **Serialization.** `TState` uses the configured `IGrainStorageSerializer`, as persistence does, so the application chooses JSON or binary for its own data. The metadata and the transaction manager are Orleans protocol types holding grain references (`CommitRecord.WriteParticipants`, `ParticipantId`), so they use the Orleans serializer, which is source-generated, version-tolerant and handles grain references under NativeAOT. The Azure provider uses Newtonsoft.Json for them; that would put reflection-based serialization on the AOT path.
+- **SQLite** opens the store transaction as `BEGIN IMMEDIATE`, so the writer takes the database lock before its first read and never has to upgrade a shared lock, which fails with `SQLITE_BUSY` instead of waiting.
+- **EF Core flavour.** Everything above is expressible in EF Core: the explicit transaction through `Database.BeginTransactionAsync(isolationLevel)`, the state row through `ExecuteUpdate` or an insert, deletes through `ExecuteDelete`, inserts through `SaveChanges`, all in the single-attempt execution strategy (section 7). Replaced sequence numbers are matched with the balanced `OR` of parameters the grain directory uses, rather than a primitive-collection `Contains`, whose translation differs between providers and versions. No raw SQL, so like persistence it works with any relational provider.
+
+**Hosting**
+
+```csharp
+silo.UseTransactions()
+    .AddScarletAdoNetTransactionalStateStorage("TransactionStore")   // or ...AsDefault()
+    .AddScarletEntityFrameworkCoreTransactionalStateStorage<AppDbContext>("TransactionStore");
+```
+
+Options mirror persistence: data source or context factory, engine, schema mode, `IGrainStorageSerializer`, and `IsDuplicateKeyError` for EF. The factory checks the schema in the silo lifecycle like every other component. `UseTransactions()` stays the application's call, since it configures Orleans' transaction runtime, not storage.
+
+**Diagnostics.** A duration histogram `scarlet.orleans.transactions.duration`, by storage name, operation (`load`, `store`) and outcome (`success`, `conflict`, `collision`, `error`), plus the number of entries written and deleted per store.
+
+**Tests**
+
+- The Orleans transactions TestKit: the storage runner (`TransactionalStateStorageTestRunner`, every fact including `PrepareMany`, `ConfirmMany`, `GrowingBatch` and `ShrinkingBatch`), and the grain runners in a silo: golden path, consistency (with and without skewed clocks), concurrency, grain faults, transaction committer (TOC), recovery and scoped transactions. The xUnit TestKit on `main` targets xUnit v3; if the published 10.4 package does not, it is vendored like the reminders TestKit.
+- The same grain runners against the wrapper path (Scarlet persistence registered as the transaction store), so both ways of storing transactional state are covered.
+- Upstream's Azure tests that apply to any store: a no-change store still rotates the ETag (`NoChangeStoreUsesStrictETag`), and a stale writer converges after `Load` (`StaleWriterConvergesAfterLoad`).
+- Atomicity: a session killed at each statement of a store, then `Load` returns exactly the state before or the state after, never a mix. This is the test that would fail if a store were split into several transactions.
+- Snapshot reads: concurrent stores and loads on one state, every load internally consistent (each pending record above the committed sequence number, the committed entry present). On SQL Server it runs with `READ_COMMITTED_SNAPSHOT` off and on.
+- Isolation between states of one grain, grains of one type, and services; long and binary identities; forced collisions; ambient transactions; large states and many pending versions.
+- A fault-injecting store for the controlled fault-injection runner, built on the store contract rather than on a provider like upstream's Azure and DynamoDB injectors.
+- Write volume against the wrapper path, measured in the benchmarks, before the first release.
+
+### 5.6 Streaming
 
 This is the component with the most logic, and where the in-box provider had the most bugs. The component logic (linked into both streaming packages) holds all the queue semantics; the backend only implements atomic queue operations.
 
@@ -524,7 +585,7 @@ EF Core cannot express row locks or skip-locked reads, and the main EF providers
 EF translation is used wherever it can express an operation, because EF and its providers keep the generated SQL correct across database releases. Only operations that EF cannot express drop down to raw SQL: mainly streaming `Dequeue` and eviction, which need a skip-locked locking read inside an update, and probably the SQL Server snapshot read of clustering, which needs a table hint. Working around a provider's error reporting is not a reason for raw SQL: persistence once used a raw insert for that, and replaced it with an existence check (section 7). Only a component with raw statements needs to know the engine. For those statements:
 
 - **One copy of the SQL.** The statements live in the component's linked source (`src/Streaming/Shared`, section 3.1), which is compiled into both `Scarlet.Orleans.Streaming.AdoNet` and `Scarlet.Orleans.Streaming.EntityFrameworkCore`. Neither package references the other, and both execute the same text. When a database release breaks a statement, CI catches it through either flavour, and one fix repairs both. Separate copies per flavour would drift apart, as the in-box scripts did.
-- **Only documented, standard constructs**, in the per-engine shapes listed in section 5.5 (for example `FOR UPDATE SKIP LOCKED` in a select whose IDs a second statement updates, inside one transaction, on MySQL). No behaviour that merely happens to work on one engine version. The MySQL 8.4 breakages (`ROW_COUNT()` inside a `WHERE` clause, `CREATE TEMPORARY TABLE … SELECT … FOR UPDATE`) were exactly that kind of trick.
+- **Only documented, standard constructs**, in the per-engine shapes listed in section 5.6 (for example `FOR UPDATE SKIP LOCKED` in a select whose IDs a second statement updates, inside one transaction, on MySQL). No behaviour that merely happens to work on one engine version. The MySQL 8.4 breakages (`ROW_COUNT()` inside a `WHERE` clause, `CREATE TEMPORARY TABLE … SELECT … FOR UPDATE`) were exactly that kind of trick.
 - **As few statements as possible.** Everything EF can generate, it generates. The raw set is listed in one place and reviewed as a unit.
 - **New database releases join the CI matrix early** (section 9.3), so a release that breaks a raw statement is found before users upgrade, not after.
 
@@ -630,7 +691,7 @@ The tool (`orleans-db`) calls each installed component package's small public sc
 ### 9.1 Test layers
 
 1. **Store conformance kit.** Black-box tests of each store contract: atomicity, conflict outcomes, ordering, limits. Every backend and engine runs it. This is the most important layer, because it verifies exactly the code that differs between engines.
-2. **Orleans TestKits.** The existing clustering, persistence and reminders TestKits, including the model-based suites.
+2. **Orleans TestKits.** The existing clustering, persistence, reminders and transactions TestKits, including the model-based suites.
 3. **Component tests.** Streaming receiver behaviour, key isolation, ETag rules.
 4. **Chaos tests.** Concurrent registration, membership churn, concurrent dequeuers. These run in CI on every engine, not only as excluded stress tests.
 5. **Migration tests** (section 8).
@@ -645,7 +706,7 @@ For every bug class in section 2 there is a test that fails when that bug is rei
 
 | Engine | Versions in CI |
 |---|---|
-| SQL Server | 2019, 2022, each with `READ_COMMITTED_SNAPSHOT` off and on (the on/off choice changes the locking reads, sections 5.1 and 5.5) |
+| SQL Server | 2019, 2022, each with `READ_COMMITTED_SNAPSHOT` off and on (the on/off choice changes the locking reads, sections 5.1, 5.5 and 5.6) |
 | PostgreSQL | 14, 16, 17 |
 | MySQL | 8.0 (while supported), 8.4 |
 | MariaDB | 10.6, 11.4 |
@@ -696,7 +757,8 @@ The schemas differ (GUID ETags, hash keys, snake case, no `OrleansQuery`), so th
 4. **Oracle.** Ship at all without a maintainer and a CI image?
 5. **Stream message IDs.** Per-queue sequences or one global sequence. Global is simpler; per queue avoids a hot sequence under very high enqueue rates.
 6. **Default schema mode.** `Validate` is the safe default (section 8.1). Should development environments default to `Apply`, for example when `IHostEnvironment.IsDevelopment()`?
-7. **Upstreaming.** If this proves itself, which parts are worth proposing to dotnet/orleans: GUID ETags, the store conformance kit, the streaming receiver rules?
+7. **Transactional metadata format.** Storing the commit records with the Orleans serializer keeps NativeAOT and grain references simple, but makes them opaque in the database. Is a readable form worth a reflection-free JSON contract for `ParticipantId`?
+8. **Upstreaming.** If this proves itself, which parts are worth proposing to dotnet/orleans: GUID ETags, the store conformance kit, the streaming receiver rules?
 
 ---
 
@@ -705,7 +767,8 @@ The schemas differ (GUID ETags, hash keys, snake case, no `OrleansQuery`), so th
 1. **Foundation:** the linked shared infrastructure (`src/Shared`), the store contracts and their conformance suite in the test projects, CI matrix with all engines, `IsAotCompatible` with analyzer warnings as errors, and the NativeAOT test project. Every later milestone runs its component's conformance tests under NativeAOT as well as JIT.
 2. **Persistence and clustering** on ADO.NET (PostgreSQL, SQL Server, MySQL, MariaDB, SQLite). These are the most used components and the easiest to verify.
 3. **Reminders and grain directory** on ADO.NET, including the directory chaos test on every engine.
-4. **Streaming** on ADO.NET, with the receiver rules from section 5.5 and the end-to-end cluster tests.
-5. **EF Core flavour** for all components over the same schema, with the schema-equality test.
-6. **The import tool**, and benchmarks against the in-box providers, including NativeAOT startup time and memory.
-7. First preview release.
+4. **Transactions** on ADO.NET and EF Core, after measuring the wrapper path over persistence that works without them (section 5.5).
+5. **Streaming** on ADO.NET, with the receiver rules from section 5.6 and the end-to-end cluster tests.
+6. **EF Core flavour** for all components over the same schema, with the schema-equality test.
+7. **The import tool**, and benchmarks against the in-box providers, including NativeAOT startup time and memory.
+8. First preview release.
