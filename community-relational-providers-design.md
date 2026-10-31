@@ -360,6 +360,7 @@ The ADO.NET flavour aims to be fully NativeAOT- and trimming-compatible from the
 - The Orleans clustering TestKit, published as `Microsoft.Orleans.Clustering.TestKit`: its 27 direct scenarios and its Accordant model-based suite, on every engine and driver, in both flavours. It includes duplicate inserts with no side effects (the MySQL 8.4 bug), stale-token updates, heartbeats between capture and update, and concurrent `ReadAll` and `ReadRow` against writers, checked for atomic views.
 - Gateway listing, forced collisions of member and cluster keys, heartbeat order, tick-exact times, a cluster without a version row, ambient transactions, and schema management.
 - Two real silos and a client per engine and flavour, configured only through the public extensions and connected over TCP: both silos join, the client reaches both, and a stopped silo is recorded dead while the other keeps serving. The in-process test cluster always installs its own membership table, so it cannot test this.
+- Orleans' liveness scenarios (`LivenessTestsBase`), on the classic test cluster with its own membership turned off, per engine and flavour: a stopped silo leaves the others active; restarting the first silo, a gateway or a third silo keeps the same and new grains served; and a silo killed while its grains run timers is declared dead by the survivors' votes in the table.
 - The EF Core model against the scripts, on every engine.
 - The TestKit is not in the NativeAOT run: Accordant fails AOT analysis (`IL3000`). The provider's own tests run there.
 

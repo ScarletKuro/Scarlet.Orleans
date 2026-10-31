@@ -47,3 +47,15 @@ public sealed class MySqlClusteringHostTests() : ClusteringHostTests(new MySqlDa
 public sealed class MariaDbClusteringHostTests() : ClusteringHostTests(new MariaDbDatabaseFixture());
 
 public sealed class MySqlDataClusteringHostTests() : ClusteringHostTests(new MySqlDataDatabaseFixture());
+
+public sealed class SqliteLivenessTests(SqliteDatabaseFixture fixture) : LivenessTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlLivenessTests(PostgreSqlDatabaseFixture fixture) : LivenessTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerLivenessTests(SqlServerDatabaseFixture fixture) : LivenessTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlLivenessTests(MySqlDatabaseFixture fixture) : LivenessTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbLivenessTests(MariaDbDatabaseFixture fixture) : LivenessTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MySqlDataLivenessTests(MySqlDataDatabaseFixture fixture) : LivenessTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;

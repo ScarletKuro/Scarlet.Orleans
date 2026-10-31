@@ -203,8 +203,9 @@ public abstract class MembershipTableTests(DatabaseFixture fixture) : IAsyncLife
         Assert.Equal(entry.StartTime.Ticks, stored.StartTime.Ticks);
         Assert.Equal(entry.IAmAliveTime.Ticks, stored.IAmAliveTime.Ticks);
         Assert.Equal(DateTimeKind.Utc, stored.StartTime.Kind);
-        var (suspector, time) = Assert.Single(stored.SuspectTimes!);
-        Assert.Equal(entry.SuspectTimes![0].Item1, suspector);
+        Assert.NotNull(stored.SuspectTimes);
+        var (suspector, time) = Assert.Single(stored.SuspectTimes);
+        Assert.Equal(Entry(2, SiloStatus.Active).SiloAddress, suspector);
         Assert.Equal(Start.Ticks + 1, time.Ticks);
     }
 
