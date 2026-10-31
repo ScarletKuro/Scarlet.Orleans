@@ -65,3 +65,23 @@ public sealed class MySqlLivenessTests(MySqlDatabaseFixture fixture) : LivenessT
 public sealed class MariaDbLivenessTests(MariaDbDatabaseFixture fixture) : LivenessTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
 public sealed class MySqlDataLivenessTests(MySqlDataDatabaseFixture fixture) : LivenessTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class SqliteClusteringCancellationTests(SqliteDatabaseFixture fixture) : ClusteringCancellationTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlClusteringCancellationTests(PostgreSqlDatabaseFixture fixture) : ClusteringCancellationTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerClusteringCancellationTests(SqlServerDatabaseFixture fixture) : ClusteringCancellationTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlClusteringCancellationTests(MySqlDatabaseFixture fixture) : ClusteringCancellationTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbClusteringCancellationTests(MariaDbDatabaseFixture fixture) : ClusteringCancellationTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MySqlDataClusteringCancellationTests(MySqlDataDatabaseFixture fixture) : ClusteringCancellationTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class PostgreSqlClusteringConnectionFailureTests(PostgreSqlDatabaseFixture fixture) : ClusteringConnectionFailureTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerClusteringConnectionFailureTests(SqlServerDatabaseFixture fixture) : ClusteringConnectionFailureTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlClusteringConnectionFailureTests(MySqlDatabaseFixture fixture) : ClusteringConnectionFailureTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbClusteringConnectionFailureTests(MariaDbDatabaseFixture fixture) : ClusteringConnectionFailureTests(fixture), IClassFixture<MariaDbDatabaseFixture>;

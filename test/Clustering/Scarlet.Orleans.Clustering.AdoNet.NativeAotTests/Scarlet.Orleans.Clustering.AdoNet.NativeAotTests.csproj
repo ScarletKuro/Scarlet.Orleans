@@ -19,6 +19,10 @@
          open generics over value types from DI (IFieldCodec<ImmutableArray<GrainManifest>>). -->
     <Compile Include="..\Shared\ClusteringSchemaManagementTests.cs" LinkBase="Shared" />
     <Compile Include="..\Shared\MembershipTableTests.cs" LinkBase="Shared" />
+    <Compile Include="..\Shared\ClusteringCancellationTests.cs" LinkBase="Shared" />
+    <Compile Include="..\Shared\ClusteringConnectionFailureTests.cs" LinkBase="Shared" />
+    <Compile Include="..\..\Shared\ChaosProxy.cs" LinkBase="TestShared" />
+    <Compile Include="..\..\Shared\ConnectionFaults.cs" LinkBase="TestShared" />
     <Compile Include="..\..\Shared\TestDatabase.cs" LinkBase="TestShared" />
     <Compile Include="..\..\Shared\TestSchemaMode.cs" LinkBase="TestShared" />
     <Compile Include="..\Scarlet.Orleans.Clustering.AdoNet.Tests\FlavourMembership.cs" LinkBase="AdoNet" />
