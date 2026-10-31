@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <OrleansVersion>10.4.0</OrleansVersion>
-    <EntityFrameworkCoreVersion>10.0.13</EntityFrameworkCoreVersion>
+    <EntityFrameworkCoreVersion>10.0.14</EntityFrameworkCoreVersion>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
@@ -22,7 +22,7 @@
     <PackageVersion Include="Npgsql" Version="10.0.3" />
     <PackageVersion Include="MySqlConnector" Version="2.6.2" />
     <PackageVersion Include="MySql.Data" Version="26.10.0" />
-    <PackageVersion Include="Microting.EntityFrameworkCore.MySql" Version="10.0.13" />
+    <PackageVersion Include="Microting.EntityFrameworkCore.MySql" Version="10.0.14" />
     <PackageVersion Include="MySql.EntityFrameworkCore" Version="10.0.12" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="xunit.v3.aot" Version="4.0.2" />
