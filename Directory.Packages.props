@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <OrleansVersion>10.4.0</OrleansVersion>
+    <OrleansVersion>10.4.2</OrleansVersion>
     <EntityFrameworkCoreVersion>10.0.14</EntityFrameworkCoreVersion>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
