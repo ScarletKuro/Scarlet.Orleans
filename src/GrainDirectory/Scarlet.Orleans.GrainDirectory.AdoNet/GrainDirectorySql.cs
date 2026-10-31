@@ -53,6 +53,12 @@ internal static class GrainDirectorySql
     /// it, and PostgreSQL then rechecks only the delete's own condition on the new row version, so without the second
     /// test it would delete the live registration.
     /// </para>
+    /// <para>
+    /// PostgreSQL collects the selected keys into an array, which it evaluates once. With <c>IN</c>, a table without
+    /// current statistics (one filled since the last analyze, as a silo's entries are) is planned as a nested loop that
+    /// runs the subquery again for every row of the silo: 12 seconds per batch at 50,000 entries, against under a
+    /// millisecond for the array.
+    /// </para>
     /// <para>The limit is a constant of the provider, so it is written into the statement.</para>
     /// </remarks>
     public static string DeleteSiloBatch(RelationalEngine engine, int limit)
@@ -62,6 +68,7 @@ internal static class GrainDirectorySql
         {
             RelationalEngine.MySql or RelationalEngine.MariaDb => $"DELETE FROM {Table} WHERE {SiloMatch} ORDER BY key_hash LIMIT {n}",
             RelationalEngine.SqlServer => $"DELETE FROM {Table} WHERE {SiloMatch} AND key_hash IN (SELECT TOP ({n}) key_hash FROM {Table} WHERE {SiloMatch} ORDER BY key_hash)",
+            RelationalEngine.PostgreSql => $"DELETE FROM {Table} WHERE {SiloMatch} AND key_hash = ANY (ARRAY(SELECT key_hash FROM {Table} WHERE {SiloMatch} ORDER BY key_hash LIMIT {n}))",
             _ => $"DELETE FROM {Table} WHERE {SiloMatch} AND key_hash IN (SELECT key_hash FROM {Table} WHERE {SiloMatch} ORDER BY key_hash LIMIT {n})",
         };
     }
