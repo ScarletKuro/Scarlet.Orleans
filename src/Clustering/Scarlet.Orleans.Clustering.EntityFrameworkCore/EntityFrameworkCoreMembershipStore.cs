@@ -228,8 +228,10 @@ internal sealed class EntityFrameworkCoreMembershipStore<TContext>(
     public Task<(int Deleted, byte[]? VersionIdentity)> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken) =>
         InTransactionAsync(IsolationLevel.ReadCommitted, write: true, async (context, ct) =>
         {
-            await LockVersionAsync(context, scope, ct).ConfigureAwait(false);
-            var identity = await VersionIdentity(context, scope).FirstOrDefaultAsync(ct).ConfigureAwait(false);
+            // A row created after the lock attempt is not locked, so it is not read either.
+            var identity = await LockVersionAsync(context, scope, ct).ConfigureAwait(false) == 0
+                ? null
+                : await VersionIdentity(context, scope).FirstOrDefaultAsync(ct).ConfigureAwait(false);
             if (identity is null || !identity.AsSpan().SequenceEqual(scope.Identity))
             {
                 return ((0, identity), false);
@@ -313,7 +315,8 @@ internal sealed class EntityFrameworkCoreMembershipStore<TContext>(
 
     /// <summary>
     /// Writes the version row without changing it, which takes its row lock on every engine, so operations that change
-    /// members without a new version keep the lock order of the others.
+    /// members without a new version keep the lock order of the others. Returns the number of rows locked: the providers
+    /// report matched rows, as EF's own concurrency checks require, even on MySQL.
     /// </summary>
     private static Task<int> LockVersionAsync(TContext context, ClusterScope scope, CancellationToken cancellationToken)
     {

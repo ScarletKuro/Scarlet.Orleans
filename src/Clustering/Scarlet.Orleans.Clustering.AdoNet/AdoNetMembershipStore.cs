@@ -164,13 +164,7 @@ internal sealed class AdoNetMembershipStore(DbDataSource dataSource, string? eng
     public Task<(int Deleted, byte[]? VersionIdentity)> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken) =>
         InTransactionAsync(IsolationLevel.ReadCommitted, async (connection, transaction, ct) =>
         {
-            await using (var lockVersion = Command(connection, transaction, ClusteringSql.LockVersion))
-            {
-                ClusteringSql.AddCluster(lockVersion, scope);
-                await lockVersion.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-            }
-
-            var identity = await ReadVersionIdentityAsync(connection, transaction, scope, ct).ConfigureAwait(false);
+            var identity = await LockVersionAsync(connection, transaction, scope, ct).ConfigureAwait(false);
             if (identity is null || !identity.AsSpan().SequenceEqual(scope.Identity))
             {
                 return ((0, identity), false);
@@ -228,6 +222,29 @@ internal sealed class AdoNetMembershipStore(DbDataSource dataSource, string? eng
         await using var swap = Command(connection, transaction, ClusteringSql.SwapVersion);
         ClusteringSql.AddVersionChange(swap, scope, version);
         return await swap.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
+    }
+
+    /// <summary>
+    /// Locks the version row until the transaction ends and returns its identity, or returns <see langword="null"/>,
+    /// locking nothing, if there is none. A row created after the lock attempt is never reported, as it is not locked.
+    /// </summary>
+    private async Task<byte[]?> LockVersionAsync(DbConnection connection, DbTransaction transaction, ClusterScope scope, CancellationToken cancellationToken)
+    {
+        await using (var lockVersion = Command(connection, transaction, ClusteringSql.LockVersion(engine)))
+        {
+            ClusteringSql.AddCluster(lockVersion, scope);
+            if (ClusteringSql.LockVersionSelects(engine))
+            {
+                return await lockVersion.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as byte[];
+            }
+
+            if (await lockVersion.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
+            {
+                return null;
+            }
+        }
+
+        return await ReadVersionIdentityAsync(connection, transaction, scope, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<byte[]?> ReadVersionIdentityAsync(DbConnection connection, DbTransaction transaction, ClusterScope scope, CancellationToken cancellationToken)
