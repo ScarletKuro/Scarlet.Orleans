@@ -228,10 +228,7 @@ internal sealed class EntityFrameworkCoreMembershipStore<TContext>(
     public Task<(int Deleted, byte[]? VersionIdentity)> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken) =>
         InTransactionAsync(IsolationLevel.ReadCommitted, write: true, async (context, ct) =>
         {
-            // A row created after the lock attempt is not locked, so it is not read either.
-            var identity = await LockVersionAsync(context, scope, ct).ConfigureAwait(false) == 0
-                ? null
-                : await VersionIdentity(context, scope).FirstOrDefaultAsync(ct).ConfigureAwait(false);
+            var identity = await LockVersionAsync(context, scope, ct).ConfigureAwait(false);
             if (identity is null || !identity.AsSpan().SequenceEqual(scope.Identity))
             {
                 return ((0, identity), false);
@@ -314,16 +311,26 @@ internal sealed class EntityFrameworkCoreMembershipStore<TContext>(
     }
 
     /// <summary>
-    /// Writes the version row without changing it, which takes its row lock on every engine, so operations that change
-    /// members without a new version keep the lock order of the others. Returns the number of rows locked: the providers
-    /// report matched rows, as EF's own concurrency checks require, even on MySQL.
+    /// Locks the version row until the transaction ends, so operations that change members without a new version keep
+    /// the lock order of the others, and returns its identity, or returns <see langword="null"/>, locking nothing, if
+    /// there is none. A row created after the lock attempt is never reported, as it is not locked.
     /// </summary>
-    private static Task<int> LockVersionAsync(TContext context, ClusterScope scope, CancellationToken cancellationToken)
+    /// <remarks>
+    /// The lock sets the version to <c>-1 - version</c> and back, so the count of the first update says whether a row was
+    /// locked whether the provider counts matched or changed rows: Oracle's MySQL provider counts changed rows on
+    /// connections with <c>UseAffectedRows=true</c>. That expression is defined for every <c>int</c>, so it cannot overflow.
+    /// </remarks>
+    private static async Task<byte[]?> LockVersionAsync(TContext context, ClusterScope scope, CancellationToken cancellationToken)
     {
         var clusterHash = scope.Hash;
-        return context.Set<ClusterVersionRecord>()
-            .Where(v => v.ClusterHash == clusterHash)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(v => v.Version, v => v.Version), cancellationToken);
+        var version = context.Set<ClusterVersionRecord>().Where(v => v.ClusterHash == clusterHash);
+        if (await version.ExecuteUpdateAsync(setters => setters.SetProperty(v => v.Version, v => -1 - v.Version), cancellationToken).ConfigureAwait(false) == 0)
+        {
+            return null;
+        }
+
+        await version.ExecuteUpdateAsync(setters => setters.SetProperty(v => v.Version, v => -1 - v.Version), cancellationToken).ConfigureAwait(false);
+        return await VersionIdentity(context, scope).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static IQueryable<ClusterMemberRecord> Member(TContext context, ClusterScope scope, byte[] keyHash, byte[] identity)

@@ -228,20 +228,17 @@ internal sealed class AdoNetMembershipStore(DbDataSource dataSource, string? eng
     /// Locks the version row until the transaction ends and returns its identity, or returns <see langword="null"/>,
     /// locking nothing, if there is none. A row created after the lock attempt is never reported, as it is not locked.
     /// </summary>
-    private async Task<byte[]?> LockVersionAsync(DbConnection connection, DbTransaction transaction, ClusterScope scope, CancellationToken cancellationToken)
+    private static async Task<byte[]?> LockVersionAsync(DbConnection connection, DbTransaction transaction, ClusterScope scope, CancellationToken cancellationToken)
     {
-        await using (var lockVersion = Command(connection, transaction, ClusteringSql.LockVersion(engine)))
+        await using (var lockVersion = Command(connection, transaction, ClusteringSql.LockVersion))
         {
             ClusteringSql.AddCluster(lockVersion, scope);
-            if (ClusteringSql.LockVersionSelects(engine))
-            {
-                return await lockVersion.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as byte[];
-            }
-
             if (await lockVersion.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
             {
                 return null;
             }
+
+            await lockVersion.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         return await ReadVersionIdentityAsync(connection, transaction, scope, cancellationToken).ConfigureAwait(false);

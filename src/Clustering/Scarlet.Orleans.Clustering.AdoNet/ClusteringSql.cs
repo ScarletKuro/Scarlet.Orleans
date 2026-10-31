@@ -24,19 +24,14 @@ internal static class ClusteringSql
 
     /// <summary>
     /// Locks the version row, so operations that change members without a new version keep the lock order of the others.
-    /// Where <see cref="LockVersionSelects"/>, it returns the row's identity, or nothing; otherwise it writes the row
-    /// without changing it, and its count tells whether a row was locked.
+    /// Run twice, it leaves the version as it was.
     /// </summary>
     /// <remarks>
-    /// MySQL counts only changed rows on connections with <c>UseAffectedRows=true</c>, so there the lock is a locking read.
+    /// The statement changes the version, to <c>-1 - version</c>, so its count says whether a row was locked whether the
+    /// driver counts matched or changed rows: MySQL counts changed rows on connections with <c>UseAffectedRows=true</c>.
+    /// <c>-1 - version</c> is defined for every <c>int</c> and reverses itself, so the lock cannot overflow.
     /// </remarks>
-    public static string LockVersion(RelationalEngine engine) =>
-        LockVersionSelects(engine)
-            ? $"SELECT cluster_identity FROM {Versions} WHERE cluster_hash = @cluster_hash FOR UPDATE"
-            : $"UPDATE {Versions} SET version = version WHERE cluster_hash = @cluster_hash";
-
-    public static bool LockVersionSelects(RelationalEngine engine) =>
-        engine is RelationalEngine.PostgreSql or RelationalEngine.MySql or RelationalEngine.MariaDb;
+    public const string LockVersion = $"UPDATE {Versions} SET version = -1 - version WHERE cluster_hash = @cluster_hash";
 
     public const string DeleteVersion = $"DELETE FROM {Versions} WHERE cluster_hash = @cluster_hash AND cluster_identity = @cluster_identity";
 

@@ -181,7 +181,8 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
     /// <remarks>
     /// MySql.Data 26.10 opens TLS connections through a dictionary shared without synchronisation, which concurrent
     /// opens corrupt, after which every open in the process fails. The tests connect without TLS, and administer the
-    /// server through MySqlConnector, so that driver bug cannot fail them.
+    /// server through MySqlConnector, so that driver bug cannot fail them. They count changed rows instead of matched
+    /// ones, so the providers are tested under both MySQL counting modes.
     /// </remarks>
     private async Task<TestDatabase> CreateMySqlDataAsync(string name)
     {
@@ -191,6 +192,7 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
             Database = name,
             SslMode = MySql.Data.MySqlClient.MySqlSslMode.Disabled,
             AllowPublicKeyRetrieval = true,
+            UseAffectedRows = true,
         }.ToString();
         return new TestDatabase(Engine, Driver, connectionString, MySql.Data.MySqlClient.MySqlClientFactory.Instance.CreateDataSource(connectionString), () =>
         {

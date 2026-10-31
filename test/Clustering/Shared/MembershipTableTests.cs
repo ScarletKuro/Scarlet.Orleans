@@ -114,6 +114,22 @@ public abstract class MembershipTableTests(DatabaseFixture fixture) : IAsyncLife
     }
 
     [Fact]
+    public async Task Cleanup_KeepsTheVersion_AtItsLargestValue()
+    {
+        var clusterId = NewClusterId();
+        var table = await CreateTableAsync(clusterId);
+        await ExecuteAsync(
+            $"UPDATE {ClusteringSchema.VersionTableName} SET version = {int.MaxValue} WHERE cluster_hash = @hash",
+            ("hash", new ClusterScope(clusterId).Hash));
+        var before = await table.ReadAllAsync(CancellationToken);
+
+        await table.CleanupDefunctSiloEntriesAsync(Start, CancellationToken);
+
+        Assert.Equal(int.MaxValue, before.Version.Version);
+        Assert.Equal(before.Version, (await table.ReadAllAsync(CancellationToken)).Version);
+    }
+
+    [Fact]
     public async Task WithoutAVersionRow_MemberRowsAreNeitherReadNorDeleted()
     {
         var clusterId = NewClusterId();
