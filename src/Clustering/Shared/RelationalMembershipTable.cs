@@ -58,7 +58,12 @@ internal sealed partial class RelationalMembershipTable(
         return ObserveAsync("delete_cluster", async () =>
         {
             using var transaction = SuppressAmbientTransaction();
-            await store.DeleteClusterAsync(new ClusterScope(clusterId), cancellationToken).ConfigureAwait(false);
+            var target = new ClusterScope(clusterId);
+            if (await store.DeleteClusterAsync(target, cancellationToken).ConfigureAwait(false) is { } existing)
+            {
+                Verify(target, existing);
+            }
+
             return true;
         });
     }
@@ -67,7 +72,12 @@ internal sealed partial class RelationalMembershipTable(
         ObserveAsync("cleanup", async () =>
         {
             using var transaction = SuppressAmbientTransaction();
-            var removed = await store.DeleteDefunctAsync(scope, beforeDate.UtcTicks, cancellationToken).ConfigureAwait(false);
+            var (removed, versionIdentity) = await store.DeleteDefunctAsync(scope, beforeDate.UtcTicks, cancellationToken).ConfigureAwait(false);
+            if (versionIdentity is not null)
+            {
+                Verify(versionIdentity);
+            }
+
             if (removed > 0)
             {
                 LogCleanedUp(clusterId, removed, beforeDate);
@@ -212,16 +222,20 @@ internal sealed partial class RelationalMembershipTable(
         return version.ToTableVersion();
     }
 
-    private void Verify(byte[] versionIdentity)
+    private void Verify(byte[] versionIdentity) => Verify(scope, versionIdentity);
+
+    private static void Verify(ClusterScope target, byte[] versionIdentity)
     {
-        if (!versionIdentity.AsSpan().SequenceEqual(scope.Identity))
+        if (!versionIdentity.AsSpan().SequenceEqual(target.Identity))
         {
-            throw Collision("the version row");
+            throw Collision(target, "the version row");
         }
     }
 
-    private MembershipKeyCollisionException Collision(string what) =>
-        new($"The storage key of {what} in {scope} is already used by a different cluster or silo. Nothing was read or written. This is a 128-bit hash collision; please report it.");
+    private MembershipKeyCollisionException Collision(string what) => Collision(scope, what);
+
+    private static MembershipKeyCollisionException Collision(ClusterScope target, string what) =>
+        new($"The storage key of {what} in {target} is already used by a different cluster or silo. Nothing was read or written. This is a 128-bit hash collision; please report it.");
 
     /// <summary>
     /// Runs one membership operation in a trace span, and records its duration and outcome.

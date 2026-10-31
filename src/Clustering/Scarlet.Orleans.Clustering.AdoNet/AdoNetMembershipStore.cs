@@ -80,7 +80,14 @@ internal sealed class AdoNetMembershipStore(DbDataSource dataSource, string? eng
                 }
             }
 
+            // Members exist only with a version row. An absent row is not locked on SQL Server, so members read now could
+            // belong to a version created after it.
             var members = new List<StoredMember>();
+            if (version is null)
+            {
+                return (new MembershipSnapshot(null, members), true);
+            }
+
             await using (var select = Command(connection, transaction, memberKeyHash is null ? ClusteringSql.SelectMembers : ClusteringSql.SelectMember))
             {
                 ClusteringSql.AddCluster(select, scope);
@@ -154,34 +161,51 @@ internal sealed class AdoNetMembershipStore(DbDataSource dataSource, string? eng
             return await update.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }, cancellationToken);
 
-    public Task<int> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken) =>
+    public Task<(int Deleted, byte[]? VersionIdentity)> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken) =>
         InTransactionAsync(IsolationLevel.ReadCommitted, async (connection, transaction, ct) =>
         {
-            await LockVersionAsync(connection, transaction, scope, ct).ConfigureAwait(false);
+            await using (var lockVersion = Command(connection, transaction, ClusteringSql.LockVersion))
+            {
+                ClusteringSql.AddCluster(lockVersion, scope);
+                await lockVersion.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            var identity = await ReadVersionIdentityAsync(connection, transaction, scope, ct).ConfigureAwait(false);
+            if (identity is null || !identity.AsSpan().SequenceEqual(scope.Identity))
+            {
+                return ((0, identity), false);
+            }
+
             await using var delete = Command(connection, transaction, ClusteringSql.DeleteDefunct);
             ClusteringSql.AddCluster(delete, scope);
             delete.AddParameter("before_ticks", beforeTicks, DbType.Int64);
-            return (await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false), true);
+            return ((await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false), identity), true);
         }, cancellationToken);
 
-    public Task DeleteClusterAsync(ClusterScope scope, CancellationToken cancellationToken) =>
+    /// <remarks>
+    /// The version row is deleted first, which locks it as every writer of the cluster does, and its count is reliable on
+    /// every driver, unlike that of an update that changes nothing.
+    /// </remarks>
+    public Task<byte[]?> DeleteClusterAsync(ClusterScope scope, CancellationToken cancellationToken) =>
         InTransactionAsync(IsolationLevel.ReadCommitted, async (connection, transaction, ct) =>
         {
-            await LockVersionAsync(connection, transaction, scope, ct).ConfigureAwait(false);
+            await using (var delete = Command(connection, transaction, ClusteringSql.DeleteVersion))
+            {
+                ClusteringSql.AddCluster(delete, scope);
+                delete.AddParameter("cluster_identity", scope.Identity, DbType.Binary);
+                if (await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false) == 0)
+                {
+                    return (await ReadVersionIdentityAsync(connection, transaction, scope, ct).ConfigureAwait(false), false);
+                }
+            }
+
             await using (var delete = Command(connection, transaction, ClusteringSql.DeleteMembers))
             {
                 ClusteringSql.AddCluster(delete, scope);
                 await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 
-            await using (var delete = Command(connection, transaction, ClusteringSql.DeleteVersion))
-            {
-                ClusteringSql.AddCluster(delete, scope);
-                delete.AddParameter("cluster_identity", scope.Identity, DbType.Binary);
-                await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-            }
-
-            return (true, true);
+            return (default(byte[]), true);
         }, cancellationToken);
 
     public Task<IReadOnlyList<StoredGateway>> ReadGatewaysAsync(ClusterScope scope, CancellationToken cancellationToken) =>
@@ -206,11 +230,11 @@ internal sealed class AdoNetMembershipStore(DbDataSource dataSource, string? eng
         return await swap.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1;
     }
 
-    private static async Task LockVersionAsync(DbConnection connection, DbTransaction transaction, ClusterScope scope, CancellationToken cancellationToken)
+    private static async Task<byte[]?> ReadVersionIdentityAsync(DbConnection connection, DbTransaction transaction, ClusterScope scope, CancellationToken cancellationToken)
     {
-        await using var lockVersion = Command(connection, transaction, ClusteringSql.LockVersion);
-        ClusteringSql.AddCluster(lockVersion, scope);
-        await lockVersion.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        await using var select = Command(connection, transaction, ClusteringSql.SelectVersion);
+        ClusteringSql.AddCluster(select, scope);
+        return await select.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as byte[];
     }
 
     /// <summary>

@@ -42,7 +42,7 @@ internal interface IMembershipStore
 
     /// <summary>
     /// Reads the cluster's version row and its member rows as one snapshot: all of them, or only the row stored under
-    /// <paramref name="memberKeyHash"/>.
+    /// <paramref name="memberKeyHash"/>. Without a version row the cluster has no members, so none are read.
     /// </summary>
     Task<MembershipSnapshot> ReadAsync(ClusterScope scope, byte[]? memberKeyHash, CancellationToken cancellationToken);
 
@@ -66,14 +66,21 @@ internal interface IMembershipStore
 
     /// <summary>
     /// Deletes the cluster's dead members whose start, heartbeat and suspicion times are all before
-    /// <paramref name="beforeTicks"/>. Returns how many it deleted. The version is unchanged.
+    /// <paramref name="beforeTicks"/>, if the version row under the cluster's hash is the cluster's. Returns how many it
+    /// deleted, and the identity of that version row, or <see langword="null"/> if there is none. The version is
+    /// unchanged.
     /// </summary>
-    Task<int> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken);
+    Task<(int Deleted, byte[]? VersionIdentity)> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Deletes the cluster's member rows and version row, in one transaction.
+    /// Deletes the cluster's version row and member rows, in one transaction, if the version row under the cluster's hash
+    /// is the cluster's. Returns the identity of a version row it left in place, or <see langword="null"/>.
     /// </summary>
-    Task DeleteClusterAsync(ClusterScope scope, CancellationToken cancellationToken);
+    /// <remarks>
+    /// Member rows exist only while their cluster's version row does, because every insert swaps that row. So without a
+    /// version row nothing is deleted, and a cluster created concurrently is never left with members and no version.
+    /// </remarks>
+    Task<byte[]?> DeleteClusterAsync(ClusterScope scope, CancellationToken cancellationToken);
 
     /// <summary>
     /// Reads the cluster's active members that accept client connections.

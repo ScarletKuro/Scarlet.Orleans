@@ -115,6 +115,13 @@ internal sealed class EntityFrameworkCoreMembershipStore<TContext>(
                 .SingleOrDefaultAsync(ct)
                 .ConfigureAwait(false);
 
+            // Members exist only with a version row. An absent row is not locked on SQL Server, so members read now could
+            // belong to a version created after it.
+            if (version is null)
+            {
+                return (new MembershipSnapshot(null, []), true);
+            }
+
             var members = context.Set<ClusterMemberRecord>().AsNoTracking().Where(m => m.ClusterHash == clusterHash);
             if (memberKeyHash is not null)
             {
@@ -218,10 +225,16 @@ internal sealed class EntityFrameworkCoreMembershipStore<TContext>(
                 .ConfigureAwait(false);
         }, cancellationToken);
 
-    public Task<int> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken) =>
+    public Task<(int Deleted, byte[]? VersionIdentity)> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken) =>
         InTransactionAsync(IsolationLevel.ReadCommitted, write: true, async (context, ct) =>
         {
             await LockVersionAsync(context, scope, ct).ConfigureAwait(false);
+            var identity = await VersionIdentity(context, scope).FirstOrDefaultAsync(ct).ConfigureAwait(false);
+            if (identity is null || !identity.AsSpan().SequenceEqual(scope.Identity))
+            {
+                return ((0, identity), false);
+            }
+
             var clusterHash = scope.Hash;
             var deleted = await context.Set<ClusterMemberRecord>()
                 .Where(m => m.ClusterHash == clusterHash
@@ -231,21 +244,28 @@ internal sealed class EntityFrameworkCoreMembershipStore<TContext>(
                     && (m.LatestSuspectTicks == null || m.LatestSuspectTicks < beforeTicks))
                 .ExecuteDeleteAsync(ct)
                 .ConfigureAwait(false);
-            return (deleted, true);
+            return ((deleted, identity), true);
         }, cancellationToken);
 
-    public Task DeleteClusterAsync(ClusterScope scope, CancellationToken cancellationToken) =>
+    /// <remarks>
+    /// The version row is deleted first, which locks it as every writer of the cluster does, and its count is reliable on
+    /// every provider, unlike that of an update that changes nothing.
+    /// </remarks>
+    public Task<byte[]?> DeleteClusterAsync(ClusterScope scope, CancellationToken cancellationToken) =>
         InTransactionAsync(IsolationLevel.ReadCommitted, write: true, async (context, ct) =>
         {
-            await LockVersionAsync(context, scope, ct).ConfigureAwait(false);
             var clusterHash = scope.Hash;
             var clusterIdentity = scope.Identity;
-            await context.Set<ClusterMemberRecord>().Where(m => m.ClusterHash == clusterHash).ExecuteDeleteAsync(ct).ConfigureAwait(false);
-            await context.Set<ClusterVersionRecord>()
+            if (await context.Set<ClusterVersionRecord>()
                 .Where(v => v.ClusterHash == clusterHash && v.ClusterIdentity == clusterIdentity)
                 .ExecuteDeleteAsync(ct)
-                .ConfigureAwait(false);
-            return (true, true);
+                .ConfigureAwait(false) == 0)
+            {
+                return (await VersionIdentity(context, scope).FirstOrDefaultAsync(ct).ConfigureAwait(false), false);
+            }
+
+            await context.Set<ClusterMemberRecord>().Where(m => m.ClusterHash == clusterHash).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+            return (default(byte[]), true);
         }, cancellationToken);
 
     public async Task<IReadOnlyList<StoredGateway>> ReadGatewaysAsync(ClusterScope scope, CancellationToken cancellationToken)
@@ -269,13 +289,13 @@ internal sealed class EntityFrameworkCoreMembershipStore<TContext>(
     private async Task<byte[]?> ReadVersionIdentityAsync(ClusterScope scope, CancellationToken cancellationToken)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await VersionIdentity(context, scope).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IQueryable<byte[]> VersionIdentity(TContext context, ClusterScope scope)
+    {
         var clusterHash = scope.Hash;
-        return await context.Set<ClusterVersionRecord>()
-            .AsNoTracking()
-            .Where(v => v.ClusterHash == clusterHash)
-            .Select(v => v.ClusterIdentity)
-            .FirstOrDefaultAsync(cancellationToken)
-            .ConfigureAwait(false);
+        return context.Set<ClusterVersionRecord>().AsNoTracking().Where(v => v.ClusterHash == clusterHash).Select(v => v.ClusterIdentity);
     }
 
     private static async Task<bool> SwapVersionAsync(TContext context, ClusterScope scope, VersionChange version, CancellationToken cancellationToken)

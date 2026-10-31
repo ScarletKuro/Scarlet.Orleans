@@ -95,6 +95,62 @@ public abstract class MembershipTableTests(DatabaseFixture fixture) : IAsyncLife
     }
 
     [Fact]
+    public async Task Collision_OfAClusterKey_FailsCleanupAndDeletion_AndDeletesNothing()
+    {
+        var clusterId = NewClusterId();
+        var table = await CreateTableAsync(clusterId);
+        await InsertAsync(table, Entry(1, SiloStatus.Dead));
+        var hash = new ClusterScope(clusterId).Hash;
+        await ExecuteAsync(
+            $"UPDATE {ClusteringSchema.VersionTableName} SET cluster_identity = @identity WHERE cluster_hash = @hash",
+            ("identity", StorageIdentity.StrictUtf8.GetBytes("another cluster")),
+            ("hash", hash));
+
+        await Assert.ThrowsAsync<MembershipKeyCollisionException>(() => table.CleanupDefunctSiloEntriesAsync(Start.AddDays(1), CancellationToken));
+        await Assert.ThrowsAsync<MembershipKeyCollisionException>(() => table.DeleteMembershipTableEntriesAsync(clusterId, CancellationToken));
+
+        Assert.Equal(1, await CountAsync(ClusteringSchema.VersionTableName, hash));
+        Assert.Equal(1, await CountAsync(ClusteringSchema.MemberTableName, hash));
+    }
+
+    [Fact]
+    public async Task WithoutAVersionRow_MemberRowsAreNeitherReadNorDeleted()
+    {
+        var clusterId = NewClusterId();
+        var table = await CreateTableAsync(clusterId);
+        var entry = Entry(1, SiloStatus.Active);
+        await InsertAsync(table, entry);
+        var hash = new ClusterScope(clusterId).Hash;
+        await ExecuteAsync($"DELETE FROM {ClusteringSchema.VersionTableName} WHERE cluster_hash = @hash", ("hash", hash));
+
+        var all = await table.ReadAllAsync(CancellationToken);
+        var row = await table.ReadRowAsync(entry.SiloAddress, CancellationToken);
+        await table.DeleteMembershipTableEntriesAsync(clusterId, CancellationToken);
+
+        Assert.Empty(all.Members);
+        Assert.Equal(0, all.Version.Version);
+        Assert.Empty(row.Members);
+        Assert.Equal(1, await CountAsync(ClusteringSchema.MemberTableName, hash));
+    }
+
+    [Fact]
+    public async Task DeletingACluster_RemovesItsRows_AndNoOtherClusters()
+    {
+        var clusterId = NewClusterId();
+        var table = await CreateTableAsync(clusterId);
+        await InsertAsync(table, Entry(1, SiloStatus.Active));
+        var other = await CreateTableAsync(clusterId + "-other");
+        await InsertAsync(other, Entry(1, SiloStatus.Active));
+
+        await table.DeleteMembershipTableEntriesAsync(clusterId, CancellationToken);
+
+        var hash = new ClusterScope(clusterId).Hash;
+        Assert.Equal(0, await CountAsync(ClusteringSchema.VersionTableName, hash));
+        Assert.Equal(0, await CountAsync(ClusteringSchema.MemberTableName, hash));
+        Assert.Single((await other.ReadAllAsync(CancellationToken)).Members);
+    }
+
+    [Fact]
     public async Task Heartbeat_NeverMovesBackwards_AndKeepsTheVersionAndETag()
     {
         var table = await CreateTableAsync(NewClusterId());
@@ -201,6 +257,13 @@ public abstract class MembershipTableTests(DatabaseFixture fixture) : IAsyncLife
         }
 
         Assert.Equal(1, await command.ExecuteNonQueryAsync(CancellationToken));
+    }
+
+    private async Task<long> CountAsync(string table, byte[] clusterHash)
+    {
+        await using var command = Database.DataSource.CreateCommand($"SELECT COUNT(*) FROM {table} WHERE cluster_hash = @hash");
+        command.AddParameter("hash", clusterHash, DbType.Binary);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(CancellationToken), System.Globalization.CultureInfo.InvariantCulture);
     }
 }
 

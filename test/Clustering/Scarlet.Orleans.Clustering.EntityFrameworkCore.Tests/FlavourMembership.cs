@@ -136,10 +136,10 @@ internal static class FlavourMembership
         public Task UpdateIAmAliveAsync(ClusterScope scope, byte[] memberKeyHash, byte[] memberIdentity, long iAmAliveTicks, CancellationToken cancellationToken) =>
             inner.UpdateIAmAliveAsync(scope, memberKeyHash, memberIdentity, iAmAliveTicks, cancellationToken);
 
-        public Task<int> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken) =>
+        public Task<(int Deleted, byte[]? VersionIdentity)> DeleteDefunctAsync(ClusterScope scope, long beforeTicks, CancellationToken cancellationToken) =>
             inner.DeleteDefunctAsync(scope, beforeTicks, cancellationToken);
 
-        public Task DeleteClusterAsync(ClusterScope scope, CancellationToken cancellationToken) => inner.DeleteClusterAsync(scope, cancellationToken);
+        public Task<byte[]?> DeleteClusterAsync(ClusterScope scope, CancellationToken cancellationToken) => inner.DeleteClusterAsync(scope, cancellationToken);
 
         public Task<IReadOnlyList<StoredGateway>> ReadGatewaysAsync(ClusterScope scope, CancellationToken cancellationToken) =>
             inner.ReadGatewaysAsync(scope, cancellationToken);
