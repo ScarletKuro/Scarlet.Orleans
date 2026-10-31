@@ -87,6 +87,26 @@ the exception or error report.
 dotnet run -c Release --project bench/Scarlet.Orleans.GrainDirectory.Benchmarks -- --soak 30 grain-directory-soak.md
 ```
 
+## Clustering benchmarks
+
+`Scarlet.Orleans.Clustering.Benchmarks` compares Scarlet ADO.NET, Scarlet EF Core and Orleans ADO.NET
+(`Microsoft.Orleans.Clustering.AdoNet`, set up from its vendored v10.4.0 scripts) through `IMembershipTable`. A silo has
+one membership table, so each provider gets its own silo host, built but not started, and the benchmark drives the
+table directly. SQLite runs the two Scarlet providers.
+
+Each provider inserts 100 silos, then runs 1,000 reads of the whole table, row reads, versioned updates and heartbeats,
+and one cleanup call removing 100 dead silos. Then 32 silos heartbeat for 10 seconds, and 32 silos read the table and
+update their own row with the next version for 10 seconds, counting successful updates and conflicts separately. Every
+write is checked, and the benchmark adds no retries.
+
+```sh
+dotnet run -c Release --project bench/Scarlet.Orleans.Clustering.Benchmarks -- clustering-results.md
+```
+
+The same `SCARLET_TEST_POSTGRESQL`, `SCARLET_TEST_SQLSERVER` and `SCARLET_TEST_MYSQL` connection strings enable the
+server engines. With Docker Desktop on Windows, connect to `127.0.0.1` rather than `localhost`: its `localhost`
+forwarding can stall a round trip for about 300 ms, which shows in the p99 of providers that take several.
+
 ## Reading the results
 
 The workloads measure the provider and the round trip to the database, which dominates. Run client and database the way
@@ -98,3 +118,4 @@ in `results/`.
 - [Reminders: 36-second SQLite soak smoke run, 2026-10-26](results/2026-10-26-reminders-soak-smoke.md)
 - [Grain directory: two local runs across all four engines, 2026-10-28](results/2026-10-28-grain-directory-local.md)
 - [Grain directory: 36-second soak smoke run across all four engines, 2026-10-28](results/2026-10-28-grain-directory-soak-smoke.md)
+- [Clustering: local run across all four engines, 2026-10-31](results/2026-10-31-clustering-local.md)

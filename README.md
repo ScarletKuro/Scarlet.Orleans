@@ -139,8 +139,10 @@ provider, on MySqlConnector, is not.
 
 On the same machine and databases, the ADO.NET persistence flavour matches or beats the in-box Orleans ADO.NET
 provider in latency and concurrent throughput on PostgreSQL and SQL Server, and is within run-to-run noise of it on
-MySQL. The EF Core flavour costs about 5 to 15% over ADO.NET. See [bench](bench/README.md) to run the comparison on
-your own infrastructure.
+MySQL. The EF Core flavour costs about 5 to 15% over ADO.NET. Clustering heartbeats match the in-box provider and cleanup
+is many times faster, while membership reads and writes take a few milliseconds more and contended membership writes
+are fewer, the cost of committing each change as one version or nothing. See [bench](bench/README.md) to run the
+comparison on your own infrastructure.
 
 ## Not yet supported
 

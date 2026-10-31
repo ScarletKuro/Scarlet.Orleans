@@ -172,16 +172,20 @@ internal sealed partial class Engine : IAsyncDisposable
     {
         var delimiter = ";";
         var current = new StringBuilder();
+        // Query texts are quoted across lines and contain semicolons; a delimiter inside quotes ends nothing. A doubled
+        // quote, MySQL's escape, leaves the parity unchanged.
+        var quoted = false;
         foreach (var line in script.ReplaceLineEndings("\n").Split('\n'))
         {
-            if (line.TrimStart().StartsWith("DELIMITER ", StringComparison.OrdinalIgnoreCase))
+            if (!quoted && line.TrimStart().StartsWith("DELIMITER ", StringComparison.OrdinalIgnoreCase))
             {
                 delimiter = line.Trim()["DELIMITER ".Length..].Trim();
                 continue;
             }
 
             current.AppendLine(line);
-            if (line.TrimEnd().EndsWith(delimiter, StringComparison.Ordinal))
+            quoted ^= line.Count(c => c == '\'') % 2 == 1;
+            if (!quoted && line.TrimEnd().EndsWith(delimiter, StringComparison.Ordinal))
             {
                 var statement = current.ToString().Trim();
                 current.Clear();
