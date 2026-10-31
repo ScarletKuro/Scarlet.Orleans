@@ -23,6 +23,15 @@ internal static class StorageIdentity
 {
     public static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
+    public static byte[] Encode(ReadOnlySpan<byte> part0, ReadOnlySpan<byte> part1)
+    {
+        var identity = new byte[(2 * sizeof(int)) + part0.Length + part1.Length];
+        var remaining = identity.AsSpan();
+        Append(ref remaining, part0);
+        Append(ref remaining, part1);
+        return identity;
+    }
+
     public static byte[] Encode(ReadOnlySpan<byte> part0, ReadOnlySpan<byte> part1, ReadOnlySpan<byte> part2)
     {
         var identity = new byte[(3 * sizeof(int)) + part0.Length + part1.Length + part2.Length];

@@ -330,34 +330,36 @@ The ADO.NET flavour aims to be fully NativeAOT- and trimming-compatible from the
 
 **Tables**
 
-- `orleans_cluster_version`: one row per cluster with `cluster_id`, `version` (`int`), `timestamp`.
-- `orleans_member`: one row per silo with `cluster_id`, `address`, `port`, `generation`, `silo_name`, `host_name`, `status`, `proxy_port`, `suspect_times`, `start_time`, `i_am_alive_time` and an `etag` (GUID).
+- `orleans_cluster_version`: one row per cluster. `cluster_hash` (key), `cluster_identity` (the cluster ID's bytes, section 4.3), `cluster_id` (display text), `version` (`int`), `etag` (16 bytes).
+- `orleans_cluster_member`: one row per silo. Key `(cluster_hash, key_hash)`, where `key_hash` hashes the cluster ID and the silo's parsable address with its generation; `member_identity` (those bytes), `silo_address`, `status`, `proxy_port`, `host_name`, `silo_name`, `role_name`, `update_zone`, `fault_zone`, `suspect_times` (text, one `address|ticks` pair per vote), `latest_suspect_ticks`, `start_ticks`, `i_am_alive_ticks` and an `etag`. The key leads with the cluster, so a cluster's rows are one range of the primary key and no secondary index is needed.
+- Times are UTC ticks (`bigint`), as for reminders: Orleans compares entries exactly, and ticks round-trip on every engine and driver. `latest_suspect_ticks` repeats the latest vote, so cleanup can compare it in SQL.
 
 **Guarantees** (the `IMembershipTable` contract)
 
 - `InsertRow` succeeds only if the member does not exist **and** the table version still equals the expected version. Both conditions hold atomically, and the version is incremented in the same transaction.
 - `UpdateRow` succeeds only if the member's ETag and the table version both match, atomically, with the version incremented.
-- `UpdateIAmAlive` never moves `i_am_alive_time` backwards (`GREATEST`, or the engine's equivalent), and does not touch the version.
-- `ReadAll` and `ReadRow` return a consistent snapshot: the table version and the member rows come from the same point in time. Orleans uses the returned version as the expected version of its next conditional write, and it reasons about the returned rows as the state at that version. A version read before a concurrent write, combined with rows read after it, would let a silo act on rows that do not match the version it holds.
+- `UpdateIAmAlive` is one blind write of the silo's own row: no read, no version change, no row ETag change. It never moves `i_am_alive_ticks` backwards, and neither does `UpdateRow`.
+- `ReadAll` and `ReadRow` return a consistent snapshot: the table version and the member rows come from the same point in time. Orleans uses the returned version as the expected version of its next conditional write, and it reasons about the returned rows as the state at that version.
+- `CleanupDefunctSiloEntries` removes dead members whose start, heartbeat and suspicion times are all strictly before the cutoff, and leaves the version unchanged, which the contract allows.
+- Clients list gateways: active members with a proxy port.
 
 **Implementation rules**
 
-- Conditional writes are one transaction in a fixed lock order: lock the version row first (`UPDATE … WHERE cluster_id = @c AND version = @expected`), then insert or update the member row. The client checks the affected-row count of each statement itself. **No guard depends on `ROW_COUNT()`, `@@ROWCOUNT` or `FOUND` inside another statement.**
-- A duplicate insert surfaces as a unique-key violation, which the backend classifies as `Conflict`. The transaction rolls back, so the version is unchanged.
-- Snapshot reads need a per-engine guarantee, because "one statement" alone is not enough everywhere:
-  - **PostgreSQL**: one statement joining the version row with the member rows. Every statement reads one snapshot, even at `READ COMMITTED`.
-  - **MySQL, MariaDB**: the same statement; InnoDB's non-locking consistent read uses one snapshot per statement at `READ COMMITTED`, and per transaction at `REPEATABLE READ`.
-  - **SQLite**: the same statement; a read transaction sees one snapshot.
-  - **SQL Server**: default (locking) `READ COMMITTED` gives no point-in-time guarantee within a statement, so a joined read is not enough. The read runs in a transaction that first reads the version row `WITH (HOLDLOCK)` and then the member rows. Every versioned write locks the version row first (rule above), so it cannot commit between the two reads, and no database setting is required. When the database has `READ_COMMITTED_SNAPSHOT` or `ALLOW_SNAPSHOT_ISOLATION` on, the dialect uses a row-versioned read instead and takes no lock; it detects the setting at startup.
-- Writes that do not change the version (`UpdateIAmAlive`, `CleanupDefunctSiloEntries`) do not affect the snapshot contract: Orleans does not tie `i_am_alive_time` to the version, and cleanup only removes rows of dead silos. Cleanup still locks the version row first, to keep a single lock order.
-- Gateway listing reads active members with a proxy port in one indexed query.
-- `CleanupDefunctSiloEntries` deletes dead members older than a cutoff, in bounded batches.
+- Conditional writes are one transaction in a fixed lock order: the version row first (`UPDATE … SET version = @new, etag = @new_etag WHERE cluster_hash = @c AND cluster_identity = @id AND version = @expected AND etag = @expected_etag`), then the member row. The client checks the affected-row count of each statement itself. **No guard depends on `ROW_COUNT()`, `@@ROWCOUNT` or `FOUND` inside another statement.**
+- A duplicate insert needs no duplicate-key handling at all: with the version row locked, and every writer of the cluster's members locking it first, the insert first checks for an existing row under the key, and rolls back if there is one, so the version is unchanged. A row with another identity there is a collision. Only the creation of the version row itself, when silos start, meets a duplicate key, which is handled as in the other components.
+- Writes that change members without a new version (cleanup, deleting a cluster) take the version row first with a no-op `UPDATE … SET version = version`, which takes its lock on every engine, so the lock order is the same everywhere.
+- Writes run at `READ COMMITTED`, set explicitly, because MySQL and MariaDB default to `REPEATABLE READ`, where range statements take next-key locks into the neighbouring cluster's rows.
+- **Snapshot reads** run in one transaction at `REPEATABLE READ`, version row first, then the members. That is one snapshot on PostgreSQL and MySQL/MariaDB (from the transaction's first read), and on SQLite (a read transaction). On SQL Server, with locking reads, the shared lock on the version row is held to the end of the transaction, and every versioned write locks that row first, so none can commit between the two reads. No table hint and no database setting is needed, which is also what lets the EF Core flavour use the same shape with no raw SQL. A mutation test that drops the read to `READ COMMITTED` fails Orleans' concurrent-read conformance scenarios on SQL Server every time.
+- Each write transaction is retried as a whole after a transient error, once disposal has rolled it back. A connection failure surfaces: Orleans reads the table again after any failed write, so an ambiguous commit needs no settling.
+- Cleanup deletes in one statement, under the version row's lock. Dead rows are few (one per silo restart, removed periodically), so batching would add transactions without shortening any lock in practice.
 
 **Tests**
 
-- The Orleans clustering TestKit and its model-based conformance suite, on every engine and version.
-- An explicit test that a duplicate insert returns `false` with **no** side effects (version unchanged, rows unchanged). That is the test that caught the MySQL 8.4 bug.
-- A snapshot test: concurrent writers insert and update members while readers call `ReadAll` in a loop, and every result must be internally consistent (the member rows are exactly those committed at the returned version).
+- The Orleans clustering TestKit, published as `Microsoft.Orleans.Clustering.TestKit`: its 27 direct scenarios and its Accordant model-based suite, on every engine and driver, in both flavours. It includes duplicate inserts with no side effects (the MySQL 8.4 bug), stale-token updates, heartbeats between capture and update, and concurrent `ReadAll` and `ReadRow` against writers, checked for atomic views.
+- Gateway listing, forced collisions of member and cluster keys, heartbeat order, tick-exact times, a cluster without a version row, ambient transactions, and schema management.
+- Two real silos and a client per engine and flavour, configured only through the public extensions and connected over TCP: both silos join, the client reaches both, and a stopped silo is recorded dead while the other keeps serving. The in-process test cluster always installs its own membership table, so it cannot test this.
+- The EF Core model against the scripts, on every engine.
+- The TestKit is not in the NativeAOT run: Accordant fails AOT analysis (`IL3000`). The provider's own tests run there.
 
 ### 5.2 Grain directory
 
@@ -582,7 +584,7 @@ EF Core cannot express row locks or skip-locked reads, and the main EF providers
 
 ### 7.1 Raw SQL in the EF flavour
 
-EF translation is used wherever it can express an operation, because EF and its providers keep the generated SQL correct across database releases. Only operations that EF cannot express drop down to raw SQL: mainly streaming `Dequeue` and eviction, which need a skip-locked locking read inside an update, and probably the SQL Server snapshot read of clustering, which needs a table hint. Working around a provider's error reporting is not a reason for raw SQL: persistence once used a raw insert for that, and replaced it with an existence check (section 7). Only a component with raw statements needs to know the engine. For those statements:
+EF translation is used wherever it can express an operation, because EF and its providers keep the generated SQL correct across database releases. Only operations that EF cannot express drop down to raw SQL: streaming `Dequeue` and eviction, which need a skip-locked locking read inside an update. Clustering needs none: its snapshot read is a `REPEATABLE READ` transaction, which EF expresses (section 5.1). Working around a provider's error reporting is not a reason for raw SQL: persistence once used a raw insert for that, and replaced it with an existence check (section 7). Only a component with raw statements needs to know the engine. For those statements:
 
 - **One copy of the SQL.** The statements live in the component's linked source (`src/Streaming/Shared`, section 3.1), which is compiled into both `Scarlet.Orleans.Streaming.AdoNet` and `Scarlet.Orleans.Streaming.EntityFrameworkCore`. Neither package references the other, and both execute the same text. When a database release breaks a statement, CI catches it through either flavour, and one fix repairs both. Separate copies per flavour would drift apart, as the in-box scripts did.
 - **Only documented, standard constructs**, in the per-engine shapes listed in section 5.6 (for example `FOR UPDATE SKIP LOCKED` in a select whose IDs a second statement updates, inside one transaction, on MySQL). No behaviour that merely happens to work on one engine version. The MySQL 8.4 breakages (`ROW_COUNT()` inside a `WHERE` clause, `CREATE TEMPORARY TABLE … SELECT … FOR UPDATE`) were exactly that kind of trick.

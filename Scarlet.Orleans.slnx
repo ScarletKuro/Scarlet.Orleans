@@ -5,6 +5,10 @@
     <Project Path="bench/Scarlet.Orleans.Reminders.Benchmarks/Scarlet.Orleans.Reminders.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/src/" />
+  <Folder Name="/src/Clustering/">
+    <Project Path="src/Clustering/Scarlet.Orleans.Clustering.AdoNet/Scarlet.Orleans.Clustering.AdoNet.csproj" />
+    <Project Path="src/Clustering/Scarlet.Orleans.Clustering.EntityFrameworkCore/Scarlet.Orleans.Clustering.EntityFrameworkCore.csproj" />
+  </Folder>
   <Folder Name="/src/GrainDirectory/">
     <Project Path="src/GrainDirectory/Scarlet.Orleans.GrainDirectory.AdoNet/Scarlet.Orleans.GrainDirectory.AdoNet.csproj" />
     <Project Path="src/GrainDirectory/Scarlet.Orleans.GrainDirectory.EntityFrameworkCore/Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.csproj" />
@@ -18,6 +22,11 @@
     <Project Path="src/Reminders/Scarlet.Orleans.Reminders.EntityFrameworkCore/Scarlet.Orleans.Reminders.EntityFrameworkCore.csproj" />
   </Folder>
   <Folder Name="/test/" />
+  <Folder Name="/test/Clustering/">
+    <Project Path="test/Clustering/Scarlet.Orleans.Clustering.AdoNet.NativeAotTests/Scarlet.Orleans.Clustering.AdoNet.NativeAotTests.csproj" />
+    <Project Path="test/Clustering/Scarlet.Orleans.Clustering.AdoNet.Tests/Scarlet.Orleans.Clustering.AdoNet.Tests.csproj" />
+    <Project Path="test/Clustering/Scarlet.Orleans.Clustering.EntityFrameworkCore.Tests/Scarlet.Orleans.Clustering.EntityFrameworkCore.Tests.csproj" />
+  </Folder>
   <Folder Name="/test/External/">
     <Project Path="test/External/Orleans.Persistence.TestKit/Orleans.Persistence.TestKit.csproj" />
     <Project Path="test/External/Orleans.Reminders.TestKit/Orleans.Reminders.TestKit.csproj" />

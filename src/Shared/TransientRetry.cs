@@ -3,12 +3,13 @@ using System.Data.Common;
 namespace Scarlet.Orleans.Relational;
 
 /// <summary>
-/// Retries a single-statement operation the server rejected as transient.
+/// Retries an operation the server rejected as transient.
 /// </summary>
 /// <remarks>
-/// Callers pass only operations that run as one autocommitted statement, so a transient error proves nothing was
-/// applied and repeating the whole operation is safe. Multi-statement operations must roll back explicitly before
-/// retrying, because engines differ in how much of a transaction an error undoes (design section 4.7).
+/// Callers pass operations that run as one autocommitted statement, or as one transaction that is rolled back before
+/// the error leaves the operation, so a transient error proves nothing was applied and repeating the whole operation is
+/// safe. The rollback must be explicit, because engines differ in how much of a transaction an error undoes (design
+/// section 4.7).
 /// </remarks>
 internal static class TransientRetry
 {

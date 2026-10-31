@@ -1,15 +1,17 @@
 # Scarlet.Orleans
 
 Relational storage providers for [Microsoft Orleans](https://github.com/dotnet/orleans) 10, in two flavours over one
-schema: plain **ADO.NET** (NativeAOT compatible) and **EF Core**. Persistence, reminders and the grain directory are
-available today; clustering and streaming are planned ([design](community-relational-providers-design.md)).
+schema: plain **ADO.NET** (NativeAOT compatible) and **EF Core**. Clustering, persistence, reminders and the grain
+directory are available today; transactions and streaming are planned ([design](community-relational-providers-design.md)).
 
 > **Status: preview.** The packages are tested against every supported engine in CI, including real connection failures
-> and the Orleans persistence and reminders TestKits, but have no production deployments yet. Try them where a lost
+> and the Orleans clustering, persistence and reminders TestKits, but have no production deployments yet. Try them where a lost
 > write would be annoying rather than catastrophic, and report what you find.
 
 | Package | For |
 |---|---|
+| [`Scarlet.Orleans.Clustering.AdoNet`](src/Clustering/Scarlet.Orleans.Clustering.AdoNet/README.md) | Cluster membership and the client gateway list over ADO.NET. NativeAOT compatible. |
+| [`Scarlet.Orleans.Clustering.EntityFrameworkCore`](src/Clustering/Scarlet.Orleans.Clustering.EntityFrameworkCore/README.md) | Cluster membership and the client gateway list over EF Core, in your own `DbContext` and migrations. |
 | [`Scarlet.Orleans.Persistence.AdoNet`](src/Persistence/Scarlet.Orleans.Persistence.AdoNet/README.md) | Grain persistence over ADO.NET. NativeAOT compatible. |
 | [`Scarlet.Orleans.Persistence.EntityFrameworkCore`](src/Persistence/Scarlet.Orleans.Persistence.EntityFrameworkCore/README.md) | Grain persistence over EF Core, with the Orleans tables in your own `DbContext` and migrations. |
 | [`Scarlet.Orleans.Reminders.AdoNet`](src/Reminders/Scarlet.Orleans.Reminders.AdoNet/README.md) | The reminder table over ADO.NET. NativeAOT compatible. |
@@ -25,12 +27,18 @@ share one database and one `orleans_schema_history` table.
 
 ```csharp
 // Each package has its own SchemaMode, so code using two of them names which one it means.
+using ClusteringSchemaMode = Scarlet.Orleans.Clustering.AdoNet.SchemaMode;
 using PersistenceSchemaMode = Scarlet.Orleans.Persistence.AdoNet.SchemaMode;
 using RemindersSchemaMode = Scarlet.Orleans.Reminders.AdoNet.SchemaMode;
 
 var dataSource = NpgsqlDataSource.Create(connectionString);
 
 builder.UseOrleans(silo => silo
+    .UseScarletAdoNetClustering(options =>
+    {
+        options.DataSource = dataSource;
+        options.SchemaMode = ClusteringSchemaMode.Apply;
+    })
     .AddScarletAdoNetGrainStorageAsDefault(options =>
     {
         options.DataSource = dataSource;
@@ -41,6 +49,9 @@ builder.UseOrleans(silo => silo
         options.DataSource = dataSource;
         options.SchemaMode = RemindersSchemaMode.Apply;
     }));
+
+// Clients find the silos through the same database.
+clientBuilder.UseOrleansClient(client => client.UseScarletAdoNetClustering(options => options.DataSource = dataSource));
 ```
 
 `Apply` creates the tables at startup. In production, have a DBA run the scripts shipped in each package
@@ -63,8 +74,12 @@ tables come from your own migrations instead.
   use it.
 - **Transactions.** Operations run outside any ambient `TransactionScope`, so a caller's rollback cannot undo a write
   Orleans already acted on.
-- **Cancellation.** A canceled call does nothing and leaves the state as it was; a write that already committed is
-  still reported.
+- **Membership.** Every membership change commits the new table version and the silo row in one transaction, or
+  nothing, and reads return the version and the rows from one snapshot, as the membership protocol requires.
+  Heartbeats are one write that never moves a silo's liveness time backwards.
+- **Cancellation.** A canceled call does nothing and leaves the state as it was; a grain state, reminder or directory
+  write that already committed is still reported. A canceled membership write surfaces the cancellation either way,
+  and Orleans reads the table again before its next write, as it does after any failed write.
 
 ## Diagnostics
 
@@ -78,6 +93,7 @@ builder.Services.AddOpenTelemetry()
 
 | Instrument | Type | Tags |
 |---|---|---|
+| `scarlet.orleans.clustering.duration` | histogram, seconds | `orleans.membership.operation` (`initialize`, `read_row`, `read_all`, `insert`, `update`, `heartbeat`, `cleanup`, `delete_cluster`), `outcome` (`success`, `conflict`, `collision`, `canceled`, `error`) |
 | `scarlet.orleans.persistence.duration` | histogram, seconds | `orleans.storage.name`, `orleans.storage.operation` (`read`, `write`, `clear`), `outcome` (`success`, `conflict`, `collision`, `payload_too_large`, `canceled`, `error`) |
 | `scarlet.orleans.persistence.payload.size` | histogram, bytes | `orleans.storage.name` |
 | `scarlet.orleans.reminders.duration` | histogram, seconds | `orleans.reminders.operation` (`read`, `read_grain`, `read_range`, `upsert`, `remove`, `clear`), `outcome` (`success`, `collision`, `canceled`, `error`) |
@@ -130,8 +146,9 @@ your own infrastructure.
 
 - **Moving from the in-box Orleans ADO.NET providers.** The schemas differ, and there is no import tool yet; start new
   deployments on these providers.
-- Table name and schema options; the tables are `orleans_grain_state`, `orleans_reminder`, `orleans_grain_directory`
-  and `orleans_schema_history` in the connection's default schema.
+- Table name and schema options; the tables are `orleans_cluster_version`, `orleans_cluster_member`,
+  `orleans_grain_state`, `orleans_reminder`, `orleans_grain_directory` and `orleans_schema_history` in the
+  connection's default schema.
 
 ## Building and testing
 
