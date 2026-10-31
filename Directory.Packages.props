@@ -14,6 +14,8 @@
     <PackageVersion Include="Microsoft.Orleans.Persistence.AdoNet" Version="$(OrleansVersion)" />
     <PackageVersion Include="Microsoft.Orleans.Reminders.AdoNet" Version="$(OrleansVersion)" />
     <PackageVersion Include="Microsoft.Orleans.Reminders" Version="$(OrleansVersion)" />
+    <PackageVersion Include="Microsoft.Orleans.Transactions" Version="$(OrleansVersion)" />
+    <PackageVersion Include="Microsoft.Orleans.Transactions.TestKit.xUnit" Version="$(OrleansVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="$(EntityFrameworkCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="$(EntityFrameworkCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="$(EntityFrameworkCoreVersion)" />

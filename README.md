@@ -1,11 +1,11 @@
 # Scarlet.Orleans
 
 Relational storage providers for [Microsoft Orleans](https://github.com/dotnet/orleans) 10, in two flavours over one
-schema: plain **ADO.NET** (NativeAOT compatible) and **EF Core**. Clustering, persistence, reminders and the grain
-directory are available today; transactions and streaming are planned ([design](community-relational-providers-design.md)).
+schema: plain **ADO.NET** (NativeAOT compatible) and **EF Core**. Clustering, persistence, reminders, the grain
+directory and transactions are available today; streaming is planned ([design](community-relational-providers-design.md)).
 
 > **Status: preview.** The packages are tested against every supported engine in CI, including real connection failures
-> and the Orleans clustering, persistence and reminders TestKits, but have no production deployments yet. Try them where a lost
+> and the Orleans clustering, persistence, reminders and transactions TestKits, but have no production deployments yet. Try them where a lost
 > write would be annoying rather than catastrophic, and report what you find.
 
 | Package | For |
@@ -18,6 +18,8 @@ directory are available today; transactions and streaming are planned ([design](
 | [`Scarlet.Orleans.Reminders.EntityFrameworkCore`](src/Reminders/Scarlet.Orleans.Reminders.EntityFrameworkCore/README.md) | The reminder table over EF Core, in your own `DbContext` and migrations. |
 | [`Scarlet.Orleans.GrainDirectory.AdoNet`](src/GrainDirectory/Scarlet.Orleans.GrainDirectory.AdoNet/README.md) | A grain directory over ADO.NET. NativeAOT compatible. |
 | [`Scarlet.Orleans.GrainDirectory.EntityFrameworkCore`](src/GrainDirectory/Scarlet.Orleans.GrainDirectory.EntityFrameworkCore/README.md) | A grain directory over EF Core, in your own `DbContext` and migrations. |
+| [`Scarlet.Orleans.Transactions.AdoNet`](src/Transactions/Scarlet.Orleans.Transactions.AdoNet/README.md) | Transactional state storage over ADO.NET. NativeAOT compatible. |
+| [`Scarlet.Orleans.Transactions.EntityFrameworkCore`](src/Transactions/Scarlet.Orleans.Transactions.EntityFrameworkCore/README.md) | Transactional state storage over EF Core, in your own `DbContext` and migrations. |
 
 All require .NET 10 and Orleans 10.4 or later. Each package's README covers its setup, schema and options. The two
 flavours of a component use the same tables, so either can use a database created by the other, and all components can
@@ -77,6 +79,9 @@ tables come from your own migrations instead.
 - **Membership.** Every membership change commits the new table version and the silo row in one transaction, or
   nothing, and reads return the version and the rows from one snapshot, as the membership protocol requires.
   Heartbeats are one write that never moves a silo's liveness time backwards.
+- **Transactional state.** Every store of a transactional state is one database transaction, checked against the
+  state's ETag, and every load is one snapshot, so a load never sees half a store. A commit moves the committed
+  sequence number instead of copying the state.
 - **Cancellation.** A canceled call does nothing and leaves the state as it was; a grain state, reminder or directory
   write that already committed is still reported. A canceled membership write surfaces the cancellation either way,
   and Orleans reads the table again before its next write, as it does after any failed write.
@@ -98,6 +103,8 @@ builder.Services.AddOpenTelemetry()
 | `scarlet.orleans.persistence.payload.size` | histogram, bytes | `orleans.storage.name` |
 | `scarlet.orleans.reminders.duration` | histogram, seconds | `orleans.reminders.operation` (`read`, `read_grain`, `read_range`, `upsert`, `remove`, `clear`), `outcome` (`success`, `collision`, `canceled`, `error`) |
 | `scarlet.orleans.grain_directory.duration` | histogram, seconds | `orleans.grain_directory.name`, `orleans.grain_directory.operation` (`register`, `lookup`, `unregister`, `unregister_silos`), `outcome` (`success`, `collision`, `canceled`, `error`) |
+| `scarlet.orleans.transactions.duration` | histogram, seconds | `orleans.storage.name`, `orleans.transactions.operation` (`load`, `store`), `outcome` (`success`, `conflict`, `collision`, `error`) |
+| `scarlet.orleans.transactions.entries` | histogram, entries | `orleans.storage.name`, `change` (`written`, `deleted`) |
 | `scarlet.orleans.retries` | counter | `error` |
 
 Each operation is also a trace span, such as `persistence write` with the grain ID, state name and outcome, or
@@ -149,8 +156,8 @@ comparison on your own infrastructure.
 - **Moving from the in-box Orleans ADO.NET providers.** The schemas differ, and there is no import tool yet; start new
   deployments on these providers.
 - Table name and schema options; the tables are `orleans_cluster_version`, `orleans_cluster_member`,
-  `orleans_grain_state`, `orleans_reminder`, `orleans_grain_directory` and `orleans_schema_history` in the
-  connection's default schema.
+  `orleans_grain_state`, `orleans_reminder`, `orleans_grain_directory`, `orleans_transactional_state`,
+  `orleans_transactional_state_entry` and `orleans_schema_history` in the connection's default schema.
 
 ## Building and testing
 
@@ -161,7 +168,8 @@ dotnet test --solution Scarlet.Orleans.slnx
 
 SQLite tests always run. Each server engine runs when its administrative connection string is set:
 `SCARLET_TEST_POSTGRESQL`, `SCARLET_TEST_SQLSERVER`, `SCARLET_TEST_MYSQL`, `SCARLET_TEST_MARIADB`. The tests create and
-drop their own databases.
+drop their own databases. The Orleans transactions consistency workloads take minutes per engine, so they run only with
+`SCARLET_TEST_CONSISTENCY=1`.
 
 ## License
 
