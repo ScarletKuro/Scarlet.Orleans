@@ -4,6 +4,7 @@
     <Project Path="bench/Scarlet.Orleans.GrainDirectory.Benchmarks/Scarlet.Orleans.GrainDirectory.Benchmarks.csproj" />
     <Project Path="bench/Scarlet.Orleans.Persistence.Benchmarks/Scarlet.Orleans.Persistence.Benchmarks.csproj" />
     <Project Path="bench/Scarlet.Orleans.Reminders.Benchmarks/Scarlet.Orleans.Reminders.Benchmarks.csproj" />
+    <Project Path="bench/Scarlet.Orleans.Transactions.Benchmarks/Scarlet.Orleans.Transactions.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Clustering/">
@@ -52,6 +53,7 @@
     <Project Path="test/Reminders/Scarlet.Orleans.Reminders.EntityFrameworkCore.Tests/Scarlet.Orleans.Reminders.EntityFrameworkCore.Tests.csproj" />
   </Folder>
   <Folder Name="/test/Transactions/">
+    <Project Path="test/Transactions/Scarlet.Orleans.Transactions.AdoNet.NativeAotTests/Scarlet.Orleans.Transactions.AdoNet.NativeAotTests.csproj" />
     <Project Path="test/Transactions/Scarlet.Orleans.Transactions.AdoNet.Tests/Scarlet.Orleans.Transactions.AdoNet.Tests.csproj" />
     <Project Path="test/Transactions/Scarlet.Orleans.Transactions.EntityFrameworkCore.Tests/Scarlet.Orleans.Transactions.EntityFrameworkCore.Tests.csproj" />
   </Folder>

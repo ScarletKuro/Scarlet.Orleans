@@ -15,6 +15,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Transactions\Scarlet.Orleans.Transactions.AdoNet\Scarlet.Orleans.Transactions.AdoNet.csproj" />
+    <!-- Recovery tests join their silos through the clustering provider; the wrapper-path tests store through grain storage. -->
+    <ProjectReference Include="..\..\..\src\Clustering\Scarlet.Orleans.Clustering.AdoNet\Scarlet.Orleans.Clustering.AdoNet.csproj" />
+    <ProjectReference Include="..\..\..\src\Persistence\Scarlet.Orleans.Persistence.AdoNet\Scarlet.Orleans.Persistence.AdoNet.csproj" />
   </ItemGroup>
 
   <ItemGroup>

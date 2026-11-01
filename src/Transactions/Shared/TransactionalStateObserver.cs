@@ -26,12 +26,18 @@ internal sealed partial class TransactionalStateObserver(string name, TimeProvid
         unit: "{entry}",
         description: "The number of prepared state entries written and deleted per store, by storage.");
 
+    private static readonly Histogram<long> PayloadSize = Diagnostics.Meter.CreateHistogram<long>(
+        "scarlet.orleans.transactions.payload.size",
+        unit: "By",
+        description: "The serialized bytes each store writes, metadata and prepared states, by storage.");
+
     public string Name => name;
 
-    public void RecordEntries(int written, int deleted)
+    public void RecordStore(int written, int deleted, long bytes)
     {
         Entries.Record(written, new KeyValuePair<string, object?>("orleans.storage.name", name), new KeyValuePair<string, object?>("change", "written"));
         Entries.Record(deleted, new KeyValuePair<string, object?>("orleans.storage.name", name), new KeyValuePair<string, object?>("change", "deleted"));
+        PayloadSize.Record(bytes, new KeyValuePair<string, object?>("orleans.storage.name", name));
     }
 
     /// <summary>

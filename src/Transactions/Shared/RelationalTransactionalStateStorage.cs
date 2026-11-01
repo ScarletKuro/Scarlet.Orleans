@@ -111,7 +111,7 @@ internal sealed class RelationalTransactionalStateStorage<TState>(
         switch (result.Status)
         {
             case StoreStatus.Stored:
-                observer.RecordEntries(prepared.Count, result.DeletedEntries);
+                observer.RecordStore(prepared.Count, result.DeletedEntries, request.Metadata.Length + prepared.Sum(e => (long)e.Payload.Length + e.TransactionManager.Length));
                 return ETags.Format(etag);
 
             case StoreStatus.MissingCommitRecord:

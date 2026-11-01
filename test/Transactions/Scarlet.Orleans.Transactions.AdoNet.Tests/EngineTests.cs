@@ -1,14 +1,18 @@
 namespace Scarlet.Orleans.Transactions.Tests;
 
-// One cluster per engine, shared by its test classes, which run one at a time: separate clusters running in parallel
-// exceed PostgreSQL's default of 100 connections.
+// One cluster per engine and configuration, shared by its test classes, which run one at a time: separate clusters
+// running in parallel exceed PostgreSQL's default of 100 connections.
 
 public sealed class SqliteTransactionsFixture() : TransactionsClusterFixture(new SqliteDatabaseFixture());
 
 public sealed class SqliteSkewedClockTransactionsFixture() : TransactionsClusterFixture(new SqliteDatabaseFixture(), skewedClock: true);
 
+public sealed class SqliteFaultInjectionFixture() : FaultInjectionFixture(new SqliteDatabaseFixture());
+
+public sealed class SqliteGrainStorageWrapperFixture() : GrainStorageWrapperFixture(new SqliteDatabaseFixture());
+
 [CollectionDefinition(Name)]
-public sealed class SqliteTransactions : ICollectionFixture<SqliteTransactionsFixture>, ICollectionFixture<SqliteSkewedClockTransactionsFixture>
+public sealed class SqliteTransactions : ICollectionFixture<SqliteTransactionsFixture>, ICollectionFixture<SqliteSkewedClockTransactionsFixture>, ICollectionFixture<SqliteFaultInjectionFixture>, ICollectionFixture<SqliteGrainStorageWrapperFixture>
 {
     public const string Name = "Sqlite transactions";
 }
@@ -46,12 +50,39 @@ public sealed class SqliteSkewedClockGoldenPathTests(SqliteSkewedClockTransactio
 [Collection(SqliteTransactions.Name)]
 public sealed class SqliteSkewedClockConsistencyTests(SqliteSkewedClockTransactionsFixture fixture, ITestOutputHelper output) : ConsistencyTests(fixture, output);
 
+[Collection(SqliteTransactions.Name)]
+public sealed class SqliteFaultInjectionTests(SqliteFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
+
+[Collection(SqliteTransactions.Name)]
+public sealed class SqliteGrainStorageWrapperGoldenPathTests(SqliteGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GoldenPathTests(fixture, output);
+
+[Collection(SqliteTransactions.Name)]
+public sealed class SqliteGrainStorageWrapperGrainFaultTests(SqliteGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GrainFaultTests(fixture, output);
+
+[Collection(SqliteTransactions.Name)]
+public sealed class SqliteGrainStorageWrapperTocGoldenPathTests(SqliteGrainStorageWrapperFixture fixture, ITestOutputHelper output) : TocGoldenPathTests(fixture, output);
+
+[Collection(SqliteTransactions.Name)]
+public sealed class SqliteGrainStorageWrapperConcurrencyTests(SqliteGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
+
+public sealed class SqliteTransactionalStateStoreTests(SqliteDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class SqliteTransactionalStateConcurrencyTests(SqliteDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class SqliteRecoveryTests(SqliteDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class SqliteTransactionsSchemaManagementTests(SqliteDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
 public sealed class PostgreSqlTransactionsFixture() : TransactionsClusterFixture(new PostgreSqlDatabaseFixture());
 
 public sealed class PostgreSqlSkewedClockTransactionsFixture() : TransactionsClusterFixture(new PostgreSqlDatabaseFixture(), skewedClock: true);
 
+public sealed class PostgreSqlFaultInjectionFixture() : FaultInjectionFixture(new PostgreSqlDatabaseFixture());
+
+public sealed class PostgreSqlGrainStorageWrapperFixture() : GrainStorageWrapperFixture(new PostgreSqlDatabaseFixture());
+
 [CollectionDefinition(Name)]
-public sealed class PostgreSqlTransactions : ICollectionFixture<PostgreSqlTransactionsFixture>, ICollectionFixture<PostgreSqlSkewedClockTransactionsFixture>
+public sealed class PostgreSqlTransactions : ICollectionFixture<PostgreSqlTransactionsFixture>, ICollectionFixture<PostgreSqlSkewedClockTransactionsFixture>, ICollectionFixture<PostgreSqlFaultInjectionFixture>, ICollectionFixture<PostgreSqlGrainStorageWrapperFixture>
 {
     public const string Name = "PostgreSql transactions";
 }
@@ -89,12 +120,39 @@ public sealed class PostgreSqlSkewedClockGoldenPathTests(PostgreSqlSkewedClockTr
 [Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlSkewedClockConsistencyTests(PostgreSqlSkewedClockTransactionsFixture fixture, ITestOutputHelper output) : ConsistencyTests(fixture, output);
 
+[Collection(PostgreSqlTransactions.Name)]
+public sealed class PostgreSqlFaultInjectionTests(PostgreSqlFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
+
+[Collection(PostgreSqlTransactions.Name)]
+public sealed class PostgreSqlGrainStorageWrapperGoldenPathTests(PostgreSqlGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GoldenPathTests(fixture, output);
+
+[Collection(PostgreSqlTransactions.Name)]
+public sealed class PostgreSqlGrainStorageWrapperGrainFaultTests(PostgreSqlGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GrainFaultTests(fixture, output);
+
+[Collection(PostgreSqlTransactions.Name)]
+public sealed class PostgreSqlGrainStorageWrapperTocGoldenPathTests(PostgreSqlGrainStorageWrapperFixture fixture, ITestOutputHelper output) : TocGoldenPathTests(fixture, output);
+
+[Collection(PostgreSqlTransactions.Name)]
+public sealed class PostgreSqlGrainStorageWrapperConcurrencyTests(PostgreSqlGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
+
+public sealed class PostgreSqlTransactionalStateStoreTests(PostgreSqlDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class PostgreSqlTransactionalStateConcurrencyTests(PostgreSqlDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class PostgreSqlRecoveryTests(PostgreSqlDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class PostgreSqlTransactionsSchemaManagementTests(PostgreSqlDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
 public sealed class SqlServerTransactionsFixture() : TransactionsClusterFixture(new SqlServerDatabaseFixture());
 
 public sealed class SqlServerSkewedClockTransactionsFixture() : TransactionsClusterFixture(new SqlServerDatabaseFixture(), skewedClock: true);
 
+public sealed class SqlServerFaultInjectionFixture() : FaultInjectionFixture(new SqlServerDatabaseFixture());
+
+public sealed class SqlServerGrainStorageWrapperFixture() : GrainStorageWrapperFixture(new SqlServerDatabaseFixture());
+
 [CollectionDefinition(Name)]
-public sealed class SqlServerTransactions : ICollectionFixture<SqlServerTransactionsFixture>, ICollectionFixture<SqlServerSkewedClockTransactionsFixture>
+public sealed class SqlServerTransactions : ICollectionFixture<SqlServerTransactionsFixture>, ICollectionFixture<SqlServerSkewedClockTransactionsFixture>, ICollectionFixture<SqlServerFaultInjectionFixture>, ICollectionFixture<SqlServerGrainStorageWrapperFixture>
 {
     public const string Name = "SqlServer transactions";
 }
@@ -132,12 +190,39 @@ public sealed class SqlServerSkewedClockGoldenPathTests(SqlServerSkewedClockTran
 [Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerSkewedClockConsistencyTests(SqlServerSkewedClockTransactionsFixture fixture, ITestOutputHelper output) : ConsistencyTests(fixture, output);
 
+[Collection(SqlServerTransactions.Name)]
+public sealed class SqlServerFaultInjectionTests(SqlServerFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
+
+[Collection(SqlServerTransactions.Name)]
+public sealed class SqlServerGrainStorageWrapperGoldenPathTests(SqlServerGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GoldenPathTests(fixture, output);
+
+[Collection(SqlServerTransactions.Name)]
+public sealed class SqlServerGrainStorageWrapperGrainFaultTests(SqlServerGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GrainFaultTests(fixture, output);
+
+[Collection(SqlServerTransactions.Name)]
+public sealed class SqlServerGrainStorageWrapperTocGoldenPathTests(SqlServerGrainStorageWrapperFixture fixture, ITestOutputHelper output) : TocGoldenPathTests(fixture, output);
+
+[Collection(SqlServerTransactions.Name)]
+public sealed class SqlServerGrainStorageWrapperConcurrencyTests(SqlServerGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
+
+public sealed class SqlServerTransactionalStateStoreTests(SqlServerDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class SqlServerTransactionalStateConcurrencyTests(SqlServerDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class SqlServerRecoveryTests(SqlServerDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class SqlServerTransactionsSchemaManagementTests(SqlServerDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
 public sealed class MySqlTransactionsFixture() : TransactionsClusterFixture(new MySqlDatabaseFixture());
 
 public sealed class MySqlSkewedClockTransactionsFixture() : TransactionsClusterFixture(new MySqlDatabaseFixture(), skewedClock: true);
 
+public sealed class MySqlFaultInjectionFixture() : FaultInjectionFixture(new MySqlDatabaseFixture());
+
+public sealed class MySqlGrainStorageWrapperFixture() : GrainStorageWrapperFixture(new MySqlDatabaseFixture());
+
 [CollectionDefinition(Name)]
-public sealed class MySqlTransactions : ICollectionFixture<MySqlTransactionsFixture>, ICollectionFixture<MySqlSkewedClockTransactionsFixture>
+public sealed class MySqlTransactions : ICollectionFixture<MySqlTransactionsFixture>, ICollectionFixture<MySqlSkewedClockTransactionsFixture>, ICollectionFixture<MySqlFaultInjectionFixture>, ICollectionFixture<MySqlGrainStorageWrapperFixture>
 {
     public const string Name = "MySql transactions";
 }
@@ -175,12 +260,39 @@ public sealed class MySqlSkewedClockGoldenPathTests(MySqlSkewedClockTransactions
 [Collection(MySqlTransactions.Name)]
 public sealed class MySqlSkewedClockConsistencyTests(MySqlSkewedClockTransactionsFixture fixture, ITestOutputHelper output) : ConsistencyTests(fixture, output);
 
+[Collection(MySqlTransactions.Name)]
+public sealed class MySqlFaultInjectionTests(MySqlFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
+
+[Collection(MySqlTransactions.Name)]
+public sealed class MySqlGrainStorageWrapperGoldenPathTests(MySqlGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GoldenPathTests(fixture, output);
+
+[Collection(MySqlTransactions.Name)]
+public sealed class MySqlGrainStorageWrapperGrainFaultTests(MySqlGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GrainFaultTests(fixture, output);
+
+[Collection(MySqlTransactions.Name)]
+public sealed class MySqlGrainStorageWrapperTocGoldenPathTests(MySqlGrainStorageWrapperFixture fixture, ITestOutputHelper output) : TocGoldenPathTests(fixture, output);
+
+[Collection(MySqlTransactions.Name)]
+public sealed class MySqlGrainStorageWrapperConcurrencyTests(MySqlGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
+
+public sealed class MySqlTransactionalStateStoreTests(MySqlDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MySqlTransactionalStateConcurrencyTests(MySqlDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MySqlRecoveryTests(MySqlDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MySqlTransactionsSchemaManagementTests(MySqlDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
 public sealed class MariaDbTransactionsFixture() : TransactionsClusterFixture(new MariaDbDatabaseFixture());
 
 public sealed class MariaDbSkewedClockTransactionsFixture() : TransactionsClusterFixture(new MariaDbDatabaseFixture(), skewedClock: true);
 
+public sealed class MariaDbFaultInjectionFixture() : FaultInjectionFixture(new MariaDbDatabaseFixture());
+
+public sealed class MariaDbGrainStorageWrapperFixture() : GrainStorageWrapperFixture(new MariaDbDatabaseFixture());
+
 [CollectionDefinition(Name)]
-public sealed class MariaDbTransactions : ICollectionFixture<MariaDbTransactionsFixture>, ICollectionFixture<MariaDbSkewedClockTransactionsFixture>
+public sealed class MariaDbTransactions : ICollectionFixture<MariaDbTransactionsFixture>, ICollectionFixture<MariaDbSkewedClockTransactionsFixture>, ICollectionFixture<MariaDbFaultInjectionFixture>, ICollectionFixture<MariaDbGrainStorageWrapperFixture>
 {
     public const string Name = "MariaDb transactions";
 }
@@ -218,12 +330,39 @@ public sealed class MariaDbSkewedClockGoldenPathTests(MariaDbSkewedClockTransact
 [Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbSkewedClockConsistencyTests(MariaDbSkewedClockTransactionsFixture fixture, ITestOutputHelper output) : ConsistencyTests(fixture, output);
 
+[Collection(MariaDbTransactions.Name)]
+public sealed class MariaDbFaultInjectionTests(MariaDbFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
+
+[Collection(MariaDbTransactions.Name)]
+public sealed class MariaDbGrainStorageWrapperGoldenPathTests(MariaDbGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GoldenPathTests(fixture, output);
+
+[Collection(MariaDbTransactions.Name)]
+public sealed class MariaDbGrainStorageWrapperGrainFaultTests(MariaDbGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GrainFaultTests(fixture, output);
+
+[Collection(MariaDbTransactions.Name)]
+public sealed class MariaDbGrainStorageWrapperTocGoldenPathTests(MariaDbGrainStorageWrapperFixture fixture, ITestOutputHelper output) : TocGoldenPathTests(fixture, output);
+
+[Collection(MariaDbTransactions.Name)]
+public sealed class MariaDbGrainStorageWrapperConcurrencyTests(MariaDbGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
+
+public sealed class MariaDbTransactionalStateStoreTests(MariaDbDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MariaDbTransactionalStateConcurrencyTests(MariaDbDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MariaDbRecoveryTests(MariaDbDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class MariaDbTransactionsSchemaManagementTests(MariaDbDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
 public sealed class MySqlDataTransactionsFixture() : TransactionsClusterFixture(new MySqlDataDatabaseFixture());
 
 public sealed class MySqlDataSkewedClockTransactionsFixture() : TransactionsClusterFixture(new MySqlDataDatabaseFixture(), skewedClock: true);
 
+public sealed class MySqlDataFaultInjectionFixture() : FaultInjectionFixture(new MySqlDataDatabaseFixture());
+
+public sealed class MySqlDataGrainStorageWrapperFixture() : GrainStorageWrapperFixture(new MySqlDataDatabaseFixture());
+
 [CollectionDefinition(Name)]
-public sealed class MySqlDataTransactions : ICollectionFixture<MySqlDataTransactionsFixture>, ICollectionFixture<MySqlDataSkewedClockTransactionsFixture>
+public sealed class MySqlDataTransactions : ICollectionFixture<MySqlDataTransactionsFixture>, ICollectionFixture<MySqlDataSkewedClockTransactionsFixture>, ICollectionFixture<MySqlDataFaultInjectionFixture>, ICollectionFixture<MySqlDataGrainStorageWrapperFixture>
 {
     public const string Name = "MySqlData transactions";
 }
@@ -260,3 +399,26 @@ public sealed class MySqlDataSkewedClockGoldenPathTests(MySqlDataSkewedClockTran
 
 [Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataSkewedClockConsistencyTests(MySqlDataSkewedClockTransactionsFixture fixture, ITestOutputHelper output) : ConsistencyTests(fixture, output);
+
+[Collection(MySqlDataTransactions.Name)]
+public sealed class MySqlDataFaultInjectionTests(MySqlDataFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
+
+[Collection(MySqlDataTransactions.Name)]
+public sealed class MySqlDataGrainStorageWrapperGoldenPathTests(MySqlDataGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GoldenPathTests(fixture, output);
+
+[Collection(MySqlDataTransactions.Name)]
+public sealed class MySqlDataGrainStorageWrapperGrainFaultTests(MySqlDataGrainStorageWrapperFixture fixture, ITestOutputHelper output) : GrainFaultTests(fixture, output);
+
+[Collection(MySqlDataTransactions.Name)]
+public sealed class MySqlDataGrainStorageWrapperTocGoldenPathTests(MySqlDataGrainStorageWrapperFixture fixture, ITestOutputHelper output) : TocGoldenPathTests(fixture, output);
+
+[Collection(MySqlDataTransactions.Name)]
+public sealed class MySqlDataGrainStorageWrapperConcurrencyTests(MySqlDataGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
+
+public sealed class MySqlDataTransactionalStateStoreTests(MySqlDataDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class MySqlDataTransactionalStateConcurrencyTests(MySqlDataDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class MySqlDataRecoveryTests(MySqlDataDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class MySqlDataTransactionsSchemaManagementTests(MySqlDataDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;

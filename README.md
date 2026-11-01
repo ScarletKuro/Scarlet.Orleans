@@ -105,6 +105,7 @@ builder.Services.AddOpenTelemetry()
 | `scarlet.orleans.grain_directory.duration` | histogram, seconds | `orleans.grain_directory.name`, `orleans.grain_directory.operation` (`register`, `lookup`, `unregister`, `unregister_silos`), `outcome` (`success`, `collision`, `canceled`, `error`) |
 | `scarlet.orleans.transactions.duration` | histogram, seconds | `orleans.storage.name`, `orleans.transactions.operation` (`load`, `store`), `outcome` (`success`, `conflict`, `collision`, `error`) |
 | `scarlet.orleans.transactions.entries` | histogram, entries | `orleans.storage.name`, `change` (`written`, `deleted`) |
+| `scarlet.orleans.transactions.payload.size` | histogram, bytes | `orleans.storage.name` |
 | `scarlet.orleans.retries` | counter | `error` |
 
 Each operation is also a trace span, such as `persistence write` with the grain ID, state name and outcome, or

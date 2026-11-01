@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Transactions\Scarlet.Orleans.Transactions.EntityFrameworkCore\Scarlet.Orleans.Transactions.EntityFrameworkCore.csproj" />
+    <!-- Recovery tests join their silos through the clustering provider. -->
+    <ProjectReference Include="..\..\..\src\Clustering\Scarlet.Orleans.Clustering.AdoNet\Scarlet.Orleans.Clustering.AdoNet.csproj" />
   </ItemGroup>
 
   <ItemGroup>

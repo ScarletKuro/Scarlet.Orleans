@@ -47,7 +47,7 @@ public abstract class TransactionsClusterFixture(DatabaseFixture database, bool 
         builder.ConfigureSilo((_, silo) =>
         {
             silo.Services.AddKeyedSingleton<IRemoteCommitService, RemoteCommitService>(TransactionTestConstants.RemoteCommitService);
-            FlavourTransactions.AddStorage(silo, TransactionTestConstants.TransactionStore, Database.Database);
+            ConfigureStorage(silo, TransactionTestConstants.TransactionStore);
             silo.UseTransactions();
             if (skewedClock)
             {
@@ -58,6 +58,11 @@ public abstract class TransactionsClusterFixture(DatabaseFixture database, bool 
         cluster = builder.Build();
         await cluster.DeployAsync();
     }
+
+    /// <summary>
+    /// Registers the storage of transactional state under <paramref name="name"/>: the storage under test.
+    /// </summary>
+    protected virtual void ConfigureStorage(ISiloBuilder silo, string name) => FlavourTransactions.AddStorage(silo, name, Database.Database);
 
     public async ValueTask DisposeAsync()
     {
