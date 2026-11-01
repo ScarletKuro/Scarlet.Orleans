@@ -26,6 +26,7 @@ foreach (var (name, variable) in new[] { ("PostgreSql", "SCARLET_TEST_POSTGRESQL
 }
 
 using var bytes = new ByteMeter();
+var failures = new List<string>();
 var report = new StringBuilder()
     .AppendLine(CultureInfo.InvariantCulture, $"# Transactional state benchmarks, {DateTimeOffset.UtcNow:yyyy-MM-dd}")
     .AppendLine()
@@ -43,12 +44,35 @@ try
         foreach (var provider in engine.TransactionProviders)
         {
             Console.WriteLine($"{engine.Name} / {provider}...");
-            var result = await Workloads.RunAsync(cluster.Client, cluster.Client.ServiceProvider.GetRequiredService<ITransactionClient>(), provider, bytes);
+            WorkloadResult result;
+            try
+            {
+                result = await Workloads.RunAsync(cluster.Client, cluster.Client.ServiceProvider.GetRequiredService<ITransactionClient>(), provider, bytes);
+            }
+            catch (Exception exception)
+            {
+                // An incomplete run reports no numbers: a read that never answered proves nothing about the totals.
+                failures.Add($"- {engine.Name} / {provider}: {exception.GetType().Name}: {exception.Message.Split('\n')[0]}");
+                report.AppendLine(CultureInfo.InvariantCulture, $"| {engine.Name} | {provider} | failed, see below |  |  |  |  |  |  |  |  |  |");
+                continue;
+            }
+
             report.AppendLine(CultureInfo.InvariantCulture,
                 $"| {engine.Name} | {provider} | {result.SingleP50:0.00} | {result.SingleP99:0.00} | {Number(result.SingleBytes, "0")} | {result.HotPerSecond:0} | {result.HotP99:0.00} | {Number(result.HotBytes, "0")} | {Number(result.HotCopiesPerStore, "0.0")} | {result.SpreadPerSecond:0} | {result.SpreadP99:0.00} | {result.Aborted} |");
         }
 
         // Preserve completed engines if a later setup or workload fails.
+        await File.WriteAllTextAsync(output, report.ToString());
+    }
+
+    if (failures.Count > 0)
+    {
+        report.AppendLine().AppendLine("## Incomplete runs").AppendLine();
+        foreach (var failure in failures)
+        {
+            report.AppendLine(failure);
+        }
+
         await File.WriteAllTextAsync(output, report.ToString());
     }
 
