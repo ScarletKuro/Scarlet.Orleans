@@ -22,15 +22,14 @@ internal static class TransactionsSql
 
     private const string InsertStateStatement =
         $"INSERT INTO {States} (key_hash, state_identity, service_id, state_name, grain_id, etag, committed_sequence_id, metadata, modified_on) " +
-        "VALUES (@key_hash, @state_identity, @service_id, @state_name, @grain_id, @etag, @commit_up_to, @metadata, @modified_on)";
+        "VALUES (@key_hash, @state_identity, @service_id, @state_name, @grain_id, @etag, @committed, @metadata, @modified_on)";
 
     /// <summary>
-    /// Replaces the state row if its identity and ETag match. The committed sequence number only moves forward, so a
-    /// commit at or below the current one changes nothing.
+    /// Replaces the state row if its identity and ETag match, with the committed sequence number the store decided
+    /// (<see cref="StorePlan"/>).
     /// </summary>
     public const string UpdateState =
-        $"UPDATE {States} SET etag = @etag, metadata = @metadata, " +
-        "committed_sequence_id = CASE WHEN @commit_up_to > committed_sequence_id THEN @commit_up_to ELSE committed_sequence_id END, modified_on = @modified_on " +
+        $"UPDATE {States} SET etag = @etag, metadata = @metadata, committed_sequence_id = @committed, modified_on = @modified_on " +
         "WHERE key_hash = @key_hash AND state_identity = @state_identity AND etag = @expected_etag";
 
     public const string SelectState = $"SELECT state_identity, etag, committed_sequence_id, metadata FROM {States} WHERE key_hash = @key_hash";

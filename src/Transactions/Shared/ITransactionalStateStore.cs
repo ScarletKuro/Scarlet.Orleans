@@ -42,8 +42,9 @@ internal interface ITransactionalStateStore
 
     /// <summary>
     /// Applies <paramref name="request"/> in one transaction: replaces the state row if its identity and ETag match, or
-    /// inserts it if <see cref="StoreRequest.ExpectedETag"/> is <see langword="null"/> and there is none; then deletes the
-    /// entries above <see cref="StoreRequest.AbortAfter"/>, writes the prepared entries over any with the same sequence
+    /// inserts it if <see cref="StoreRequest.ExpectedETag"/> is <see langword="null"/> and there is none; then applies the
+    /// <see cref="StorePlan"/> decided from the committed sequence number before the store: deletes the pending entries
+    /// above <see cref="StoreRequest.AbortAfter"/>, writes the pending prepared entries over any with the same sequence
     /// numbers, advances the committed sequence number to <see cref="StoreRequest.CommitUpTo"/> if that is later, and
     /// deletes the entries the commit made obsolete. Changes nothing unless it returns <see cref="StoreStatus.Stored"/>.
     /// </summary>
@@ -96,3 +97,27 @@ internal enum StoreStatus
 /// <param name="StoredIdentity">On a conflict, the identity of the state row under the key's hash, if there is one.</param>
 /// <param name="DeletedEntries">The number of entries deleted, when stored.</param>
 internal readonly record struct StoreResult(StoreStatus Status, byte[]? StoredIdentity = null, int DeletedEntries = 0);
+
+/// <summary>
+/// What a store changes, decided from the committed sequence number before it, as Orleans' grain storage wrapper does:
+/// an abort removes only pending entries, a prepare never replaces the committed entry or an older one, and a commit
+/// applies only if it moves the committed sequence number forward.
+/// </summary>
+/// <param name="Committed">The committed sequence number after the store.</param>
+/// <param name="Advances">Whether the store commits, so the entry at <paramref name="Committed"/> must exist.</param>
+/// <param name="AbortAbove">The sequence number above which entries are deleted, or <see langword="null"/>.</param>
+/// <param name="Prepared">The prepared entries to write.</param>
+internal sealed record StorePlan(long Committed, bool Advances, long? AbortAbove, IReadOnlyList<StoredEntry> Prepared)
+{
+    /// <param name="request">The store.</param>
+    /// <param name="previous">The committed sequence number before the store, 0 for a state not stored yet.</param>
+    public static StorePlan Create(StoreRequest request, long previous)
+    {
+        var advances = request.CommitUpTo > previous;
+        return new(
+            advances ? request.CommitUpTo!.Value : previous,
+            advances,
+            request.AbortAfter is { } abortAfter ? Math.Max(abortAfter, previous) : null,
+            request.Prepared.Any(e => e.SequenceId <= previous) ? [.. request.Prepared.Where(e => e.SequenceId > previous)] : request.Prepared);
+    }
+}

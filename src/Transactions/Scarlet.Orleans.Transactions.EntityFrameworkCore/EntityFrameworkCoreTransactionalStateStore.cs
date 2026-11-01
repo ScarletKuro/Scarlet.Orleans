@@ -138,27 +138,47 @@ internal sealed class EntityFrameworkCoreTransactionalStateStore<TContext>(
     /// </summary>
     private static async Task<(StoreResult Result, bool Commit)> StoreCoreAsync(TContext context, TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken)
     {
-        if (!await WriteStateAsync(context, key, request, cancellationToken).ConfigureAwait(false))
+        var keyHash = key.Hash;
+
+        // The committed sequence number before this store settles every step, as in Orleans' grain storage wrapper. It is
+        // read before the row is locked: if another store commits in between, the update misses the ETag and nothing is
+        // applied.
+        long previous = 0;
+        if (request.ExpectedETag is not null)
+        {
+            if (await context.Set<TransactionalStateRecord>()
+                .Where(s => s.KeyHash == keyHash)
+                .Select(s => (long?)s.CommittedSequenceId)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false) is not { } value)
+            {
+                return (new StoreResult(StoreStatus.Conflict), false);
+            }
+
+            previous = value;
+        }
+
+        var plan = StorePlan.Create(request, previous);
+        if (!await WriteStateAsync(context, key, request, plan.Committed, cancellationToken).ConfigureAwait(false))
         {
             return (new StoreResult(StoreStatus.Conflict), false);
         }
 
-        var keyHash = key.Hash;
         var entries = context.Set<TransactionalStateEntryRecord>();
         var deleted = 0;
-        if (request.AbortAfter is { } abortAfter)
+        if (plan.AbortAbove is { } abortAbove)
         {
-            deleted += await entries.Where(e => e.KeyHash == keyHash && e.SequenceId > abortAfter).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+            deleted += await entries.Where(e => e.KeyHash == keyHash && e.SequenceId > abortAbove).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        if (request.Prepared.Count > 0)
+        if (plan.Prepared.Count > 0)
         {
-            foreach (var chunk in request.Prepared.Chunk(SequencesPerDelete))
+            foreach (var chunk in plan.Prepared.Chunk(SequencesPerDelete))
             {
                 await entries.Where(AnySequence(keyHash, chunk)).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            entries.AddRange(request.Prepared.Select(e => new TransactionalStateEntryRecord
+            entries.AddRange(plan.Prepared.Select(e => new TransactionalStateEntryRecord
             {
                 KeyHash = keyHash,
                 SequenceId = e.SequenceId,
@@ -171,15 +191,10 @@ internal sealed class EntityFrameworkCoreTransactionalStateStore<TContext>(
             context.ChangeTracker.Clear();
         }
 
-        if (request.CommitUpTo is { } commitUpTo)
+        if (plan.Advances)
         {
-            var committed = await context.Set<TransactionalStateRecord>()
-                .Where(s => s.KeyHash == keyHash)
-                .Select(s => s.CommittedSequenceId)
-                .SingleAsync(cancellationToken)
-                .ConfigureAwait(false);
-            if (committed == commitUpTo
-                && !await entries.AnyAsync(e => e.KeyHash == keyHash && e.SequenceId == commitUpTo, cancellationToken).ConfigureAwait(false))
+            var committed = plan.Committed;
+            if (!await entries.AnyAsync(e => e.KeyHash == keyHash && e.SequenceId == committed, cancellationToken).ConfigureAwait(false))
             {
                 return (new StoreResult(StoreStatus.MissingCommitRecord), false);
             }
@@ -191,10 +206,11 @@ internal sealed class EntityFrameworkCoreTransactionalStateStore<TContext>(
     }
 
     /// <summary>
-    /// Replaces or inserts the state row. Returns <see langword="false"/> if no row with the expected identity and ETag
-    /// exists. A failed insert throws, for <see cref="StoreAsync"/> to settle.
+    /// Replaces or inserts the state row, with <paramref name="committed"/> as its committed sequence number. Returns
+    /// <see langword="false"/> if no row with the expected identity and ETag exists. A failed insert throws, for
+    /// <see cref="StoreAsync"/> to settle.
     /// </summary>
-    private static async Task<bool> WriteStateAsync(TContext context, TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken)
+    private static async Task<bool> WriteStateAsync(TContext context, TransactionalStateKey key, StoreRequest request, long committed, CancellationToken cancellationToken)
     {
         if (request.ExpectedETag is not { } expected)
         {
@@ -206,7 +222,7 @@ internal sealed class EntityFrameworkCoreTransactionalStateStore<TContext>(
                 StateName = key.StateNameText,
                 GrainId = key.GrainIdText,
                 ETag = request.ETag,
-                CommittedSequenceId = request.CommitUpTo ?? 0,
+                CommittedSequenceId = committed,
                 Metadata = request.Metadata,
                 ModifiedOn = request.ModifiedOn.UtcDateTime,
             });
@@ -217,17 +233,15 @@ internal sealed class EntityFrameworkCoreTransactionalStateStore<TContext>(
 
         var keyHash = key.Hash;
         var identity = key.Identity;
-        var commitUpTo = request.CommitUpTo ?? 0;
         var modifiedOn = request.ModifiedOn.UtcDateTime;
 
-        // The committed sequence number only moves forward, so a commit at or below the current one changes nothing.
         return await context.Set<TransactionalStateRecord>()
             .Where(s => s.KeyHash == keyHash && s.StateIdentity == identity && s.ETag == expected)
             .ExecuteUpdateAsync(
                 setters => setters
                     .SetProperty(s => s.ETag, request.ETag)
                     .SetProperty(s => s.Metadata, request.Metadata)
-                    .SetProperty(s => s.CommittedSequenceId, s => commitUpTo > s.CommittedSequenceId ? commitUpTo : s.CommittedSequenceId)
+                    .SetProperty(s => s.CommittedSequenceId, committed)
                     .SetProperty(s => s.ModifiedOn, modifiedOn),
                 cancellationToken)
             .ConfigureAwait(false) == 1;

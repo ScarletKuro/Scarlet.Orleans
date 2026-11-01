@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Scarlet.Orleans.Relational;
 using Scarlet.Orleans.Relational.Schema;
@@ -91,21 +92,37 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
     /// </summary>
     private async Task<(StoreResult Result, bool Commit)> StoreCoreAsync(DbConnection connection, DbTransaction transaction, TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken)
     {
-        if (!await WriteStateAsync(connection, transaction, key, request, cancellationToken).ConfigureAwait(false))
+        // The committed sequence number before this store settles every step, as in Orleans' grain storage wrapper. It is
+        // read before the row is locked: if another store commits in between, the update misses the ETag and nothing is
+        // applied.
+        long previous = 0;
+        if (request.ExpectedETag is not null)
+        {
+            var value = await ScalarAsync(connection, transaction, TransactionsSql.SelectCommitted, key, sequenceId: null, cancellationToken).ConfigureAwait(false);
+            if (value is null or DBNull)
+            {
+                return (new StoreResult(StoreStatus.Conflict), false);
+            }
+
+            previous = Convert.ToInt64(value, CultureInfo.InvariantCulture);
+        }
+
+        var plan = StorePlan.Create(request, previous);
+        if (!await WriteStateAsync(connection, transaction, key, request, plan.Committed, cancellationToken).ConfigureAwait(false))
         {
             return (new StoreResult(StoreStatus.Conflict), false);
         }
 
         var deleted = 0;
-        if (request.AbortAfter is { } abortAfter)
+        if (plan.AbortAbove is { } abortAbove)
         {
-            deleted += await DeleteAsync(connection, transaction, TransactionsSql.DeleteAbove, key, abortAfter, cancellationToken).ConfigureAwait(false);
+            deleted += await DeleteAsync(connection, transaction, TransactionsSql.DeleteAbove, key, abortAbove, cancellationToken).ConfigureAwait(false);
         }
 
-        if (request.Prepared.Count > 0)
+        if (plan.Prepared.Count > 0)
         {
-            await DeleteAsync(connection, transaction, TransactionsSql.DeleteSequences(request.Prepared.Select(e => e.SequenceId)), key, sequenceId: null, cancellationToken).ConfigureAwait(false);
-            foreach (var chunk in request.Prepared.Chunk(TransactionsSql.EntriesPerInsert))
+            await DeleteAsync(connection, transaction, TransactionsSql.DeleteSequences(plan.Prepared.Select(e => e.SequenceId)), key, sequenceId: null, cancellationToken).ConfigureAwait(false);
+            foreach (var chunk in plan.Prepared.Chunk(TransactionsSql.EntriesPerInsert))
             {
                 await using var insert = Command(connection, transaction, TransactionsSql.InsertEntries(chunk.Length));
                 TransactionsSql.AddKey(insert, key);
@@ -118,26 +135,24 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
             }
         }
 
-        if (request.CommitUpTo is { } commitUpTo)
+        if (plan.Advances)
         {
-            var committed = Convert.ToInt64(await ScalarAsync(connection, transaction, TransactionsSql.SelectCommitted, key, sequenceId: null, cancellationToken).ConfigureAwait(false), System.Globalization.CultureInfo.InvariantCulture);
-            if (committed == commitUpTo
-                && Convert.ToInt64(await ScalarAsync(connection, transaction, TransactionsSql.CountEntry, key, commitUpTo, cancellationToken).ConfigureAwait(false), System.Globalization.CultureInfo.InvariantCulture) == 0)
+            if (Convert.ToInt64(await ScalarAsync(connection, transaction, TransactionsSql.CountEntry, key, plan.Committed, cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture) == 0)
             {
                 return (new StoreResult(StoreStatus.MissingCommitRecord), false);
             }
 
-            deleted += await DeleteAsync(connection, transaction, TransactionsSql.DeleteBelow, key, committed, cancellationToken).ConfigureAwait(false);
+            deleted += await DeleteAsync(connection, transaction, TransactionsSql.DeleteBelow, key, plan.Committed, cancellationToken).ConfigureAwait(false);
         }
 
         return (new StoreResult(StoreStatus.Stored, DeletedEntries: deleted), true);
     }
 
     /// <summary>
-    /// Replaces or inserts the state row. Returns <see langword="false"/> if no row with the expected identity and ETag
-    /// exists, or a row exists where none was expected.
+    /// Replaces or inserts the state row, with <paramref name="committed"/> as its committed sequence number. Returns
+    /// <see langword="false"/> if no row with the expected identity and ETag exists, or a row exists where none was expected.
     /// </summary>
-    private async Task<bool> WriteStateAsync(DbConnection connection, DbTransaction transaction, TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken)
+    private async Task<bool> WriteStateAsync(DbConnection connection, DbTransaction transaction, TransactionalStateKey key, StoreRequest request, long committed, CancellationToken cancellationToken)
     {
         var insert = request.ExpectedETag is null;
         await using var command = Command(connection, transaction, insert ? TransactionsSql.InsertState(engine) : TransactionsSql.UpdateState);
@@ -145,7 +160,7 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
         command.AddParameter("state_identity", key.Identity, DbType.Binary);
         command.AddParameter("etag", request.ETag, DbType.Binary);
         command.AddParameter("metadata", request.Metadata, DbType.Binary);
-        command.AddParameter("commit_up_to", request.CommitUpTo ?? 0, DbType.Int64);
+        command.AddParameter("committed", committed, DbType.Int64);
         command.AddParameter("modified_on", request.ModifiedOn, DbType.DateTimeOffset);
         if (insert)
         {
