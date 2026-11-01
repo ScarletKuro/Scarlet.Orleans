@@ -506,7 +506,7 @@ Options mirror persistence: data source or context factory, engine, schema mode,
 
 All of the above is in place, with these specifics:
 
-- The recovery runner deploys four silos per test on the classic test cluster, joined through `Scarlet.Orleans.Clustering.AdoNet` on the same database, because the test cluster's own membership hangs off a primary silo that the runner may kill.
+- The recovery runner deploys four silos per test on the classic test cluster, joined through `Scarlet.Orleans.Clustering.AdoNet` on the same database, because the test cluster's own membership hangs off a primary silo that the runner may kill. It runs nightly, with the consistency runner, since each test runs four silos for up to a minute and a half (`SCARLET_TEST_RECOVERY=1`).
 - The wrapper-path runs (golden path, grain fault, TOC, concurrency) register `Scarlet.Orleans.Persistence.AdoNet` under the store name.
 - The fault injector wraps any `ITransactionalStateStorageFactory` and implements the public `IControlledTransactionFaultInjector`; upstream's injectors route through an internal TestKit interface.
 - Atomicity and snapshot loads are store-level tests: writers advance their states as Orleans does, every payload holds its sequence number, sessions are killed or responses dropped, and every load must show the committed entry and at most the next pending one. On SQL Server the snapshot test also runs with `READ_COMMITTED_SNAPSHOT` on.

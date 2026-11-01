@@ -17,8 +17,9 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   CONFIGURATION: Release
 
-# Every job runs the whole suite. SQLite always runs; a server engine runs where its SCARLET_TEST_* connection string is
-# set, and SCARLET_TEST_REQUIRE makes a job fail rather than skip when its own engine is missing.
+# Every job runs the whole suite. The build job runs SQLite; a server engine runs where its SCARLET_TEST_* connection
+# string is set, and SCARLET_TEST_REQUIRE makes a job fail rather than skip when its own engine is missing. The
+# transactions consistency and recovery runners take minutes per engine, so they run in nightly.yml.
 # Images are pinned by digest and updated deliberately (design section 9.3).
 # Jobs with a database server run the test projects one at a time: together they open more connections than the
 # servers' defaults allow (100 on PostgreSQL, 151 on MySQL).
@@ -27,7 +28,7 @@ jobs:
   build:
     name: Build, pack, SQLite
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -44,7 +45,7 @@ jobs:
   postgresql:
     name: PostgreSQL ${{ matrix.version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -65,6 +66,8 @@ jobs:
     env:
       SCARLET_TEST_POSTGRESQL: Host=localhost;Port=5432;Username=postgres;Password=scarlet-test-1
       SCARLET_TEST_REQUIRE: PostgreSql
+      # The build job runs the SQLite tests; running them again in every database job only doubles their time.
+      SCARLET_TEST_SKIP_SQLITE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -75,7 +78,7 @@ jobs:
   sqlserver:
     name: SQL Server ${{ matrix.version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -94,6 +97,8 @@ jobs:
     env:
       SCARLET_TEST_SQLSERVER: Server=localhost,1433;User ID=sa;Password=Scarlet-Test-1;TrustServerCertificate=True
       SCARLET_TEST_REQUIRE: SqlServer
+      # The build job runs the SQLite tests; running them again in every database job only doubles their time.
+      SCARLET_TEST_SKIP_SQLITE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -107,7 +112,7 @@ jobs:
   mysql:
     name: MySQL ${{ matrix.version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -125,6 +130,8 @@ jobs:
       # Runs the MySqlConnector and MySql.Data suites, and both MySQL EF Core providers.
       SCARLET_TEST_MYSQL: Server=127.0.0.1;Port=3306;User ID=root;Password=scarlet-test-1;AllowPublicKeyRetrieval=True
       SCARLET_TEST_REQUIRE: MySql
+      # The build job runs the SQLite tests; running them again in every database job only doubles their time.
+      SCARLET_TEST_SKIP_SQLITE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -135,7 +142,7 @@ jobs:
   mariadb:
     name: MariaDB ${{ matrix.version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -154,6 +161,8 @@ jobs:
     env:
       SCARLET_TEST_MARIADB: Server=127.0.0.1;Port=3306;User ID=root;Password=scarlet-test-1
       SCARLET_TEST_REQUIRE: MariaDb
+      # The build job runs the SQLite tests; running them again in every database job only doubles their time.
+      SCARLET_TEST_SKIP_SQLITE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0

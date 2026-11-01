@@ -46,7 +46,13 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
 
     private string? AdminConnectionString => EnvironmentVariable is null ? null : Environment.GetEnvironmentVariable(EnvironmentVariable);
 
-    public bool IsAvailable => EnvironmentVariable is null || !string.IsNullOrWhiteSpace(AdminConnectionString);
+    /// <summary>
+    /// Whether this engine runs: a server engine when its connection string is set, SQLite unless
+    /// <c>SCARLET_TEST_SKIP_SQLITE</c> is <c>1</c>, which the server engines' CI jobs set, since the build job runs SQLite.
+    /// </summary>
+    public bool IsAvailable => EnvironmentVariable is null
+        ? Environment.GetEnvironmentVariable("SCARLET_TEST_SKIP_SQLITE") != "1"
+        : !string.IsNullOrWhiteSpace(AdminConnectionString);
 
     /// <summary>
     /// The database shared by the tests of a class. Tests isolate their rows with unique service IDs.
@@ -79,7 +85,9 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
             return;
         }
 
-        var message = $"Set {EnvironmentVariable} to an administrative connection string to run {Engine} tests.";
+        var message = EnvironmentVariable is null
+            ? "SCARLET_TEST_SKIP_SQLITE is set, so SQLite tests are skipped."
+            : $"Set {EnvironmentVariable} to an administrative connection string to run {Engine} tests.";
         var required = (Environment.GetEnvironmentVariable("SCARLET_TEST_REQUIRE") ?? "").Split(',', StringSplitOptions.TrimEntries);
         if (required.Contains(Engine, StringComparer.OrdinalIgnoreCase))
         {

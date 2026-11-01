@@ -12,7 +12,8 @@ namespace Scarlet.Orleans.Transactions.Tests;
 /// Orleans' recovery runner: transactions in flight while a silo of four shuts down or is killed, and at each recovery
 /// phase, must all resolve, with the storage under test. Each test deploys its own cluster, joined through the ADO.NET
 /// clustering provider on the same database, because the test cluster's own membership depends on a primary silo the
-/// runner may kill.
+/// runner may kill. Each test runs a cluster of four silos for up to a minute and a half, so like upstream's long-running
+/// suites the runner runs only when <c>SCARLET_TEST_RECOVERY</c> is <c>1</c>.
 /// </summary>
 public abstract class RecoveryTests(DatabaseFixture fixture, ITestOutputHelper output) : IAsyncLifetime
 {
@@ -24,10 +25,13 @@ public abstract class RecoveryTests(DatabaseFixture fixture, ITestOutputHelper o
 
     private TestCluster? cluster;
 
+    private static bool OptedIn => Environment.GetEnvironmentVariable("SCARLET_TEST_RECOVERY") == "1";
+
     private TransactionRecoveryTestsRunnerxUnit Runner
     {
         get
         {
+            Assert.SkipUnless(OptedIn, "Set SCARLET_TEST_RECOVERY=1 to run the recovery runner.");
             fixture.Require();
             return new TransactionRecoveryTestsRunnerxUnit(cluster!, output);
         }
@@ -35,7 +39,7 @@ public abstract class RecoveryTests(DatabaseFixture fixture, ITestOutputHelper o
 
     public async ValueTask InitializeAsync()
     {
-        if (!fixture.IsAvailable)
+        if (!OptedIn || !fixture.IsAvailable)
         {
             return;
         }

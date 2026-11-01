@@ -169,8 +169,9 @@ dotnet test --solution Scarlet.Orleans.slnx
 
 SQLite tests always run. Each server engine runs when its administrative connection string is set:
 `SCARLET_TEST_POSTGRESQL`, `SCARLET_TEST_SQLSERVER`, `SCARLET_TEST_MYSQL`, `SCARLET_TEST_MARIADB`. The tests create and
-drop their own databases. The Orleans transactions consistency workloads take minutes per engine, so they run only with
-`SCARLET_TEST_CONSISTENCY=1`.
+drop their own databases. The Orleans transactions consistency workloads and recovery runner take minutes per engine, so they run only with
+`SCARLET_TEST_CONSISTENCY=1` and `SCARLET_TEST_RECOVERY=1`, as the nightly workflow sets. `SCARLET_TEST_SKIP_SQLITE=1`
+skips the SQLite tests, which CI runs once rather than in every database job.
 
 ## License
 
