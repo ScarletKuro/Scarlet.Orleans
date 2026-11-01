@@ -154,6 +154,12 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
     private const int MaxPoolSize = 40;
 
     /// <summary>
+    /// How long a pooled connection may sit idle. Drivers keep idle connections for minutes by default, so fixtures alive
+    /// between their tests would hold connections the running tests need.
+    /// </summary>
+    private const int IdleSeconds = 2;
+
+    /// <summary>
     /// Both MySQL drivers' tests share one server, whose default of 151 connections their pools exceed when a test project
     /// keeps several clusters alive. The test server is dedicated to the tests, so they raise its limit, never lower it.
     /// </summary>
@@ -162,7 +168,7 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
     private async Task<TestDatabase> CreatePostgreSqlAsync(string name)
     {
         await ExecuteAdminAsync(NpgsqlFactory.Instance, $"CREATE DATABASE \"{name}\"");
-        var connectionString = new NpgsqlConnectionStringBuilder(AdminConnectionString) { Database = name, MaxPoolSize = MaxPoolSize }.ToString();
+        var connectionString = new NpgsqlConnectionStringBuilder(AdminConnectionString) { Database = name, MaxPoolSize = MaxPoolSize, ConnectionIdleLifetime = IdleSeconds, ConnectionPruningInterval = 1 }.ToString();
         return new TestDatabase(Engine, Driver, connectionString, NpgsqlDataSource.Create(connectionString),
             () => ExecuteAdminAsync(NpgsqlFactory.Instance, $"DROP DATABASE IF EXISTS \"{name}\" WITH (FORCE)"));
     }
@@ -181,7 +187,7 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
     private async Task<TestDatabase> CreateMySqlAsync(string name)
     {
         await ExecuteAdminAsync(MySqlConnectorFactory.Instance, $"{RaiseMySqlConnectionLimit} CREATE DATABASE `{name}`");
-        var connectionString = new MySqlConnectionStringBuilder(AdminConnectionString!) { Database = name, MaximumPoolSize = MaxPoolSize }.ToString();
+        var connectionString = new MySqlConnectionStringBuilder(AdminConnectionString!) { Database = name, MaximumPoolSize = MaxPoolSize, ConnectionIdleTimeout = IdleSeconds }.ToString();
         return new TestDatabase(Engine, Driver, connectionString, new MySqlDataSource(connectionString), () =>
         {
             MySqlConnection.ClearAllPools();

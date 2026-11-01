@@ -1,7 +1,7 @@
 namespace Scarlet.Orleans.Transactions.Tests;
 
-// One cluster per engine and configuration, shared by its test classes, which run one at a time: separate clusters
-// running in parallel exceed PostgreSQL's default of 100 connections.
+// One collection per engine: its clusters are shared by its test classes, and all its classes run one at a time,
+// because classes running in parallel exceed PostgreSQL's default of 100 connections.
 
 public sealed class SqliteTransactionsFixture() : TransactionsClusterFixture(new SqliteDatabaseFixture());
 
@@ -65,12 +65,16 @@ public sealed class SqliteGrainStorageWrapperTocGoldenPathTests(SqliteGrainStora
 [Collection(SqliteTransactions.Name)]
 public sealed class SqliteGrainStorageWrapperConcurrencyTests(SqliteGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
 
+[Collection(SqliteTransactions.Name)]
 public sealed class SqliteTransactionalStateStoreTests(SqliteDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<SqliteDatabaseFixture>;
 
+[Collection(SqliteTransactions.Name)]
 public sealed class SqliteTransactionalStateConcurrencyTests(SqliteDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<SqliteDatabaseFixture>;
 
+[Collection(SqliteTransactions.Name)]
 public sealed class SqliteRecoveryTests(SqliteDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<SqliteDatabaseFixture>;
 
+[Collection(SqliteTransactions.Name)]
 public sealed class SqliteTransactionsSchemaManagementTests(SqliteDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<SqliteDatabaseFixture>;
 
 public sealed class PostgreSqlTransactionsFixture() : TransactionsClusterFixture(new PostgreSqlDatabaseFixture());
@@ -135,12 +139,16 @@ public sealed class PostgreSqlGrainStorageWrapperTocGoldenPathTests(PostgreSqlGr
 [Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlGrainStorageWrapperConcurrencyTests(PostgreSqlGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
 
+[Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlTransactionalStateStoreTests(PostgreSqlDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
 
+[Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlTransactionalStateConcurrencyTests(PostgreSqlDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
 
+[Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlRecoveryTests(PostgreSqlDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<PostgreSqlDatabaseFixture>;
 
+[Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlTransactionsSchemaManagementTests(PostgreSqlDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
 
 public sealed class SqlServerTransactionsFixture() : TransactionsClusterFixture(new SqlServerDatabaseFixture());
@@ -205,12 +213,16 @@ public sealed class SqlServerGrainStorageWrapperTocGoldenPathTests(SqlServerGrai
 [Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerGrainStorageWrapperConcurrencyTests(SqlServerGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
 
+[Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerTransactionalStateStoreTests(SqlServerDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
 
+[Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerTransactionalStateConcurrencyTests(SqlServerDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
 
+[Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerRecoveryTests(SqlServerDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<SqlServerDatabaseFixture>;
 
+[Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerTransactionsSchemaManagementTests(SqlServerDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
 
 public sealed class MySqlTransactionsFixture() : TransactionsClusterFixture(new MySqlDatabaseFixture());
@@ -275,12 +287,16 @@ public sealed class MySqlGrainStorageWrapperTocGoldenPathTests(MySqlGrainStorage
 [Collection(MySqlTransactions.Name)]
 public sealed class MySqlGrainStorageWrapperConcurrencyTests(MySqlGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
 
+[Collection(MySqlTransactions.Name)]
 public sealed class MySqlTransactionalStateStoreTests(MySqlDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<MySqlDatabaseFixture>;
 
+[Collection(MySqlTransactions.Name)]
 public sealed class MySqlTransactionalStateConcurrencyTests(MySqlDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<MySqlDatabaseFixture>;
 
+[Collection(MySqlTransactions.Name)]
 public sealed class MySqlRecoveryTests(MySqlDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<MySqlDatabaseFixture>;
 
+[Collection(MySqlTransactions.Name)]
 public sealed class MySqlTransactionsSchemaManagementTests(MySqlDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<MySqlDatabaseFixture>;
 
 public sealed class MariaDbTransactionsFixture() : TransactionsClusterFixture(new MariaDbDatabaseFixture());
@@ -345,12 +361,16 @@ public sealed class MariaDbGrainStorageWrapperTocGoldenPathTests(MariaDbGrainSto
 [Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbGrainStorageWrapperConcurrencyTests(MariaDbGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
 
+[Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbTransactionalStateStoreTests(MariaDbDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
+[Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbTransactionalStateConcurrencyTests(MariaDbDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
+[Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbRecoveryTests(MariaDbDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<MariaDbDatabaseFixture>;
 
+[Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbTransactionsSchemaManagementTests(MariaDbDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
 public sealed class MySqlDataTransactionsFixture() : TransactionsClusterFixture(new MySqlDataDatabaseFixture());
@@ -415,10 +435,14 @@ public sealed class MySqlDataGrainStorageWrapperTocGoldenPathTests(MySqlDataGrai
 [Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataGrainStorageWrapperConcurrencyTests(MySqlDataGrainStorageWrapperFixture fixture, ITestOutputHelper output) : ConcurrencyTests(fixture, output);
 
+[Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataTransactionalStateStoreTests(MySqlDataDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
 
+[Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataTransactionalStateConcurrencyTests(MySqlDataDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
 
+[Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataRecoveryTests(MySqlDataDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<MySqlDataDatabaseFixture>;
 
+[Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataTransactionsSchemaManagementTests(MySqlDataDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;

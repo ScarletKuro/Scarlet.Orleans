@@ -1,7 +1,7 @@
 namespace Scarlet.Orleans.Transactions.Tests;
 
-// One cluster per engine and configuration, shared by its test classes, which run one at a time: separate clusters
-// running in parallel exceed PostgreSQL's default of 100 connections.
+// One collection per engine: its clusters are shared by its test classes, and all its classes run one at a time,
+// because classes running in parallel exceed PostgreSQL's default of 100 connections.
 
 public sealed class SqliteTransactionsFixture() : TransactionsClusterFixture(new SqliteDatabaseFixture());
 
@@ -51,12 +51,16 @@ public sealed class SqliteSkewedClockConsistencyTests(SqliteSkewedClockTransacti
 [Collection(SqliteTransactions.Name)]
 public sealed class SqliteFaultInjectionTests(SqliteFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
 
+[Collection(SqliteTransactions.Name)]
 public sealed class SqliteTransactionalStateStoreTests(SqliteDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<SqliteDatabaseFixture>;
 
+[Collection(SqliteTransactions.Name)]
 public sealed class SqliteTransactionalStateConcurrencyTests(SqliteDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<SqliteDatabaseFixture>;
 
+[Collection(SqliteTransactions.Name)]
 public sealed class SqliteRecoveryTests(SqliteDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<SqliteDatabaseFixture>;
 
+[Collection(SqliteTransactions.Name)]
 public sealed class SqliteTransactionsModelTests(SqliteDatabaseFixture fixture) : TransactionsModelTests(fixture), IClassFixture<SqliteDatabaseFixture>;
 
 public sealed class PostgreSqlTransactionsFixture() : TransactionsClusterFixture(new PostgreSqlDatabaseFixture());
@@ -107,12 +111,16 @@ public sealed class PostgreSqlSkewedClockConsistencyTests(PostgreSqlSkewedClockT
 [Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlFaultInjectionTests(PostgreSqlFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
 
+[Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlTransactionalStateStoreTests(PostgreSqlDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
 
+[Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlTransactionalStateConcurrencyTests(PostgreSqlDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
 
+[Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlRecoveryTests(PostgreSqlDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<PostgreSqlDatabaseFixture>;
 
+[Collection(PostgreSqlTransactions.Name)]
 public sealed class PostgreSqlTransactionsModelTests(PostgreSqlDatabaseFixture fixture) : TransactionsModelTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
 
 public sealed class SqlServerTransactionsFixture() : TransactionsClusterFixture(new SqlServerDatabaseFixture());
@@ -163,12 +171,16 @@ public sealed class SqlServerSkewedClockConsistencyTests(SqlServerSkewedClockTra
 [Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerFaultInjectionTests(SqlServerFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
 
+[Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerTransactionalStateStoreTests(SqlServerDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
 
+[Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerTransactionalStateConcurrencyTests(SqlServerDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
 
+[Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerRecoveryTests(SqlServerDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<SqlServerDatabaseFixture>;
 
+[Collection(SqlServerTransactions.Name)]
 public sealed class SqlServerTransactionsModelTests(SqlServerDatabaseFixture fixture) : TransactionsModelTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
 
 public sealed class MySqlTransactionsFixture() : TransactionsClusterFixture(new MySqlDatabaseFixture());
@@ -219,12 +231,16 @@ public sealed class MySqlSkewedClockConsistencyTests(MySqlSkewedClockTransaction
 [Collection(MySqlTransactions.Name)]
 public sealed class MySqlFaultInjectionTests(MySqlFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
 
+[Collection(MySqlTransactions.Name)]
 public sealed class MySqlTransactionalStateStoreTests(MySqlDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<MySqlDatabaseFixture>;
 
+[Collection(MySqlTransactions.Name)]
 public sealed class MySqlTransactionalStateConcurrencyTests(MySqlDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<MySqlDatabaseFixture>;
 
+[Collection(MySqlTransactions.Name)]
 public sealed class MySqlRecoveryTests(MySqlDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<MySqlDatabaseFixture>;
 
+[Collection(MySqlTransactions.Name)]
 public sealed class MySqlTransactionsModelTests(MySqlDatabaseFixture fixture) : TransactionsModelTests(fixture), IClassFixture<MySqlDatabaseFixture>;
 
 public sealed class MariaDbTransactionsFixture() : TransactionsClusterFixture(new MariaDbDatabaseFixture());
@@ -275,12 +291,16 @@ public sealed class MariaDbSkewedClockConsistencyTests(MariaDbSkewedClockTransac
 [Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbFaultInjectionTests(MariaDbFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
 
+[Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbTransactionalStateStoreTests(MariaDbDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
+[Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbTransactionalStateConcurrencyTests(MariaDbDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
+[Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbRecoveryTests(MariaDbDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<MariaDbDatabaseFixture>;
 
+[Collection(MariaDbTransactions.Name)]
 public sealed class MariaDbTransactionsModelTests(MariaDbDatabaseFixture fixture) : TransactionsModelTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
 public sealed class MySqlDataTransactionsFixture() : TransactionsClusterFixture(new MySqlDataDatabaseFixture());
@@ -331,10 +351,14 @@ public sealed class MySqlDataSkewedClockConsistencyTests(MySqlDataSkewedClockTra
 [Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataFaultInjectionTests(MySqlDataFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
 
+[Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataTransactionalStateStoreTests(MySqlDataDatabaseFixture fixture) : TransactionalStateStoreTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
 
+[Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataTransactionalStateConcurrencyTests(MySqlDataDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
 
+[Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataRecoveryTests(MySqlDataDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<MySqlDataDatabaseFixture>;
 
+[Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataTransactionsModelTests(MySqlDataDatabaseFixture fixture) : TransactionsModelTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
