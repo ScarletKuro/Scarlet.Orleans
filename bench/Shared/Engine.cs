@@ -172,20 +172,21 @@ internal sealed partial class Engine : IAsyncDisposable
     {
         var delimiter = ";";
         var current = new StringBuilder();
-        // Query texts are quoted across lines and contain semicolons; a delimiter inside quotes ends nothing. A doubled
-        // quote, MySQL's escape, leaves the parity unchanged.
+        // Query texts are quoted across lines and contain semicolons, so a delimiter inside quotes ends nothing; quotes in
+        // comments, such as "isn't", open nothing.
         var quoted = false;
+        var inBlockComment = false;
         foreach (var line in script.ReplaceLineEndings("\n").Split('\n'))
         {
-            if (!quoted && line.TrimStart().StartsWith("DELIMITER ", StringComparison.OrdinalIgnoreCase))
+            if (!quoted && !inBlockComment && line.TrimStart().StartsWith("DELIMITER ", StringComparison.OrdinalIgnoreCase))
             {
                 delimiter = line.Trim()["DELIMITER ".Length..].Trim();
                 continue;
             }
 
             current.AppendLine(line);
-            quoted ^= line.Count(c => c == '\'') % 2 == 1;
-            if (!quoted && line.TrimEnd().EndsWith(delimiter, StringComparison.Ordinal))
+            (quoted, inBlockComment) = Scan(line, quoted, inBlockComment);
+            if (!quoted && !inBlockComment && line.TrimEnd().EndsWith(delimiter, StringComparison.Ordinal))
             {
                 var statement = current.ToString().Trim();
                 current.Clear();
@@ -201,6 +202,52 @@ internal sealed partial class Engine : IAsyncDisposable
         {
             yield return rest;
         }
+    }
+
+    /// <summary>
+    /// Whether a quoted string or block comment is still open after <paramref name="line"/>. A doubled quote is MySQL's
+    /// escape for a quote, and a <c>--</c> comment runs to the end of the line.
+    /// </summary>
+    private static (bool Quoted, bool InBlockComment) Scan(string line, bool quoted, bool inBlockComment)
+    {
+        for (var i = 0; i < line.Length; i++)
+        {
+            var next = i + 1 < line.Length ? line[i + 1] : '\0';
+            if (inBlockComment)
+            {
+                if (line[i] == '*' && next == '/')
+                {
+                    inBlockComment = false;
+                    i++;
+                }
+            }
+            else if (quoted)
+            {
+                if (line[i] == '\'' && next == '\'')
+                {
+                    i++;
+                }
+                else if (line[i] == '\'')
+                {
+                    quoted = false;
+                }
+            }
+            else if (line[i] == '\'')
+            {
+                quoted = true;
+            }
+            else if (line[i] == '-' && next == '-')
+            {
+                break;
+            }
+            else if (line[i] == '/' && next == '*')
+            {
+                inBlockComment = true;
+                i++;
+            }
+        }
+
+        return (quoted, inBlockComment);
     }
 
     private static async Task ExecuteAsync(DbDataSource dataSource, string sql)

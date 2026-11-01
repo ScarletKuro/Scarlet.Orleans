@@ -107,6 +107,35 @@ The same `SCARLET_TEST_POSTGRESQL`, `SCARLET_TEST_SQLSERVER` and `SCARLET_TEST_M
 server engines. With Docker Desktop on Windows, connect to `127.0.0.1` rather than `localhost`: its `localhost`
 forwarding can stall a round trip for about 300 ms, which shows in the p99 of providers that take several.
 
+## Transactional state benchmarks
+
+`Scarlet.Orleans.Transactions.Benchmarks` compares how transactional state is stored, through real Orleans transactions
+on account grains with a 1 KiB state, in one silo per engine:
+
+- **Scarlet ADO.NET** and **Scarlet EF Core**, the dedicated transactional state storage;
+- **Wrapper on Scarlet persistence** and, on PostgreSQL, SQL Server and MySQL, **Wrapper on Orleans ADO.NET
+  persistence**: grain storage registered under the storage name, which Orleans then uses through its wrapper, rewriting
+  the committed state and every pending version on each store.
+
+Each provider runs three workloads:
+
+- **Single account**: 300 sequential transactions on one account. Orleans prepares and commits each in one store, so
+  nothing waits as pending; this is the cost of the simplest transaction.
+- **Hot transfers**: 16 callers each moving money from its own account into one shared account for 10 seconds. Each
+  transfer is one transaction over two grains, so on the shared account prepared versions wait for their transaction
+  managers and pile up, which is where the wrapper rewrites them all.
+- **Spread transfers**: each caller between its own two accounts, for throughput without a shared grain.
+
+The report gives latency, throughput, aborted transactions, and the serialized bytes written, from the
+`scarlet.orleans.transactions.payload.size` and `scarlet.orleans.persistence.payload.size` metrics; the in-box
+persistence reports no such metric. **State copies per store**, the bytes per store over the state size, shows the
+pending depth directly: about one for the dedicated stores, which write each prepared version once, and the committed
+state plus every pending version for the wrapper. After the transfers, the accounts must still sum to zero.
+
+```sh
+dotnet run -c Release --project bench/Scarlet.Orleans.Transactions.Benchmarks -- transactions-results.md
+```
+
 ## Reading the results
 
 The workloads measure the provider and the round trip to the database, which dominates. Run client and database the way
