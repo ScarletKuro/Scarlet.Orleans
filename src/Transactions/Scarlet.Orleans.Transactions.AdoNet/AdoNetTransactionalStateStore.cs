@@ -40,6 +40,9 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
     }
 
     public Task<StoredTransactionalState?> LoadAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
+        engine == RelationalEngine.PostgreSql ? LoadPostgreSqlAsync(key, cancellationToken) : LoadInTransactionAsync(key, cancellationToken);
+
+    private Task<StoredTransactionalState?> LoadInTransactionAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
         InTransactionAsync(IsolationLevel.RepeatableRead, async (connection, transaction, ct) =>
         {
             byte[] identity, etag, metadata;
@@ -76,7 +79,9 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
 
     public async Task<StoreResult> StoreAsync(TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken)
     {
-        var result = await InTransactionAsync(IsolationLevel.ReadCommitted, (connection, transaction, ct) => StoreCoreAsync(connection, transaction, key, request, ct), cancellationToken).ConfigureAwait(false);
+        var result = engine == RelationalEngine.PostgreSql
+            ? await StorePostgreSqlAsync(key, request, cancellationToken).ConfigureAwait(false)
+            : await InTransactionAsync(IsolationLevel.ReadCommitted, (connection, transaction, ct) => StoreCoreAsync(connection, transaction, key, request, ct), cancellationToken).ConfigureAwait(false);
         if (result.Status != StoreStatus.Conflict)
         {
             return result;
@@ -248,4 +253,54 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
         command.Transaction = transaction;
         return command;
     }
+
+    /// <summary>
+    /// A load in one statement, which PostgreSQL reads from one snapshot (<see cref="PostgreSqlTransactionsBatch"/>).
+    /// </summary>
+    private Task<StoredTransactionalState?> LoadPostgreSqlAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
+        {
+            await using var select = dataSource.CreateCommand(PostgreSqlTransactionsBatch.Load);
+            TransactionsSql.AddKey(select, key);
+            await using var reader = await select.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            if (!await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                return null;
+            }
+
+            var identity = reader.GetFieldValue<byte[]>(0);
+            var etag = reader.GetFieldValue<byte[]>(1);
+            var committed = reader.GetInt64(2);
+            var metadata = reader.GetFieldValue<byte[]>(3);
+            var entries = new List<StoredEntry>();
+            do
+            {
+                if (!reader.IsDBNull(4))
+                {
+                    entries.Add(new StoredEntry(reader.GetInt64(4), reader.GetString(5), reader.GetInt64(6), reader.GetFieldValue<byte[]>(7), reader.GetFieldValue<byte[]>(8)));
+                }
+            }
+            while (await reader.ReadAsync(ct).ConfigureAwait(false));
+
+            return (StoredTransactionalState?)new StoredTransactionalState(identity, etag, committed, metadata, entries);
+        }, cancellationToken);
+
+    /// <summary>
+    /// A store in one batch, which PostgreSQL runs as one implicit transaction (<see cref="PostgreSqlTransactionsBatch"/>).
+    /// </summary>
+    private Task<StoreResult> StorePostgreSqlAsync(TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken) =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
+        {
+            await using var batch = PostgreSqlTransactionsBatch.CreateStore(dataSource, key, request);
+            try
+            {
+                await batch.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+            catch (DbException exception) when (exception.SqlState == PostgreSqlTransactionsBatch.DivisionByZero)
+            {
+                return new StoreResult(StoreStatus.MissingCommitRecord);
+            }
+
+            return PostgreSqlTransactionsBatch.Result(batch, request);
+        }, cancellationToken);
 }
