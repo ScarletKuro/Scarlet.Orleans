@@ -147,10 +147,22 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
         });
     }
 
+    /// <summary>
+    /// The connections each test database's pool may open. Tests run in parallel against one server, and PostgreSQL and
+    /// MySQL accept 100 and 151 connections by default, which two pools at the drivers' default of 100 can exceed.
+    /// </summary>
+    private const int MaxPoolSize = 40;
+
+    /// <summary>
+    /// Both MySQL drivers' tests share one server, whose default of 151 connections their pools exceed when a test project
+    /// keeps several clusters alive. The test server is dedicated to the tests, so they raise its limit, never lower it.
+    /// </summary>
+    private const string RaiseMySqlConnectionLimit = "SET GLOBAL max_connections = CAST(GREATEST(@@GLOBAL.max_connections, 500) AS UNSIGNED);";
+
     private async Task<TestDatabase> CreatePostgreSqlAsync(string name)
     {
         await ExecuteAdminAsync(NpgsqlFactory.Instance, $"CREATE DATABASE \"{name}\"");
-        var connectionString = new NpgsqlConnectionStringBuilder(AdminConnectionString) { Database = name }.ToString();
+        var connectionString = new NpgsqlConnectionStringBuilder(AdminConnectionString) { Database = name, MaxPoolSize = MaxPoolSize }.ToString();
         return new TestDatabase(Engine, Driver, connectionString, NpgsqlDataSource.Create(connectionString),
             () => ExecuteAdminAsync(NpgsqlFactory.Instance, $"DROP DATABASE IF EXISTS \"{name}\" WITH (FORCE)"));
     }
@@ -168,8 +180,8 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
 
     private async Task<TestDatabase> CreateMySqlAsync(string name)
     {
-        await ExecuteAdminAsync(MySqlConnectorFactory.Instance, $"CREATE DATABASE `{name}`");
-        var connectionString = new MySqlConnectionStringBuilder(AdminConnectionString!) { Database = name }.ToString();
+        await ExecuteAdminAsync(MySqlConnectorFactory.Instance, $"{RaiseMySqlConnectionLimit} CREATE DATABASE `{name}`");
+        var connectionString = new MySqlConnectionStringBuilder(AdminConnectionString!) { Database = name, MaximumPoolSize = MaxPoolSize }.ToString();
         return new TestDatabase(Engine, Driver, connectionString, new MySqlDataSource(connectionString), () =>
         {
             MySqlConnection.ClearAllPools();
@@ -186,13 +198,14 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
     /// </remarks>
     private async Task<TestDatabase> CreateMySqlDataAsync(string name)
     {
-        await ExecuteAdminAsync(MySqlConnectorFactory.Instance, $"CREATE DATABASE `{name}`");
+        await ExecuteAdminAsync(MySqlConnectorFactory.Instance, $"{RaiseMySqlConnectionLimit} CREATE DATABASE `{name}`");
         var connectionString = new MySql.Data.MySqlClient.MySqlConnectionStringBuilder(AdminConnectionString!)
         {
             Database = name,
             SslMode = MySql.Data.MySqlClient.MySqlSslMode.Disabled,
             AllowPublicKeyRetrieval = true,
             UseAffectedRows = true,
+            MaximumPoolSize = MaxPoolSize,
         }.ToString();
         return new TestDatabase(Engine, Driver, connectionString, MySql.Data.MySqlClient.MySqlClientFactory.Instance.CreateDataSource(connectionString), () =>
         {
