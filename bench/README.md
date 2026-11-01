@@ -148,3 +148,4 @@ in `results/`.
 - [Grain directory: two local runs across all four engines, 2026-10-28](results/2026-10-28-grain-directory-local.md)
 - [Grain directory: 36-second soak smoke run across all four engines, 2026-10-28](results/2026-10-28-grain-directory-soak-smoke.md)
 - [Clustering: local run across all four engines, 2026-10-31](results/2026-10-31-clustering-local.md)
+- [Transactional state: local run across all four engines, 2026-11-01](results/2026-11-01-transactions-local.md)
