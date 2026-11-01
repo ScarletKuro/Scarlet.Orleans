@@ -40,7 +40,12 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
     }
 
     public Task<StoredTransactionalState?> LoadAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
-        engine == RelationalEngine.PostgreSql ? LoadPostgreSqlAsync(key, cancellationToken) : LoadInTransactionAsync(key, cancellationToken);
+        engine switch
+        {
+            RelationalEngine.PostgreSql => LoadPostgreSqlAsync(key, cancellationToken),
+            RelationalEngine.SqlServer => LoadSqlServerAsync(key, cancellationToken),
+            _ => LoadInTransactionAsync(key, cancellationToken),
+        };
 
     private Task<StoredTransactionalState?> LoadInTransactionAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
         InTransactionAsync(IsolationLevel.RepeatableRead, async (connection, transaction, ct) =>
@@ -79,7 +84,9 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
 
     public async Task<StoreResult> StoreAsync(TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken)
     {
-        var result = engine == RelationalEngine.PostgreSql
+        var result = engine == RelationalEngine.SqlServer && request.Prepared.Count <= SqlServerTransactionsBatch.MaxPrepared
+            ? await StoreSqlServerAsync(key, request, cancellationToken).ConfigureAwait(false)
+            : engine == RelationalEngine.PostgreSql
             ? await StorePostgreSqlAsync(key, request, cancellationToken).ConfigureAwait(false)
             : await InTransactionAsync(IsolationLevel.ReadCommitted, (connection, transaction, ct) => StoreCoreAsync(connection, transaction, key, request, ct), cancellationToken).ConfigureAwait(false);
         if (result.Status != StoreStatus.Conflict)
@@ -302,5 +309,51 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
             }
 
             return PostgreSqlTransactionsBatch.Result(batch, request);
+        }, cancellationToken);
+
+    /// <summary>
+    /// A load in one command, whose T-SQL transaction holds the state row's shared lock until it has read the entries
+    /// (<see cref="SqlServerTransactionsBatch"/>).
+    /// </summary>
+    private Task<StoredTransactionalState?> LoadSqlServerAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
+        {
+            await using var select = dataSource.CreateCommand(SqlServerTransactionsBatch.Load);
+            TransactionsSql.AddKey(select, key);
+            await using var reader = await select.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            if (!await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                return null;
+            }
+
+            var identity = reader.GetFieldValue<byte[]>(0);
+            var etag = reader.GetFieldValue<byte[]>(1);
+            var committed = reader.GetInt64(2);
+            var metadata = reader.GetFieldValue<byte[]>(3);
+            var entries = new List<StoredEntry>();
+            await reader.NextResultAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                entries.Add(TransactionsSql.ReadEntry(reader));
+            }
+
+            return (StoredTransactionalState?)new StoredTransactionalState(identity, etag, committed, metadata, entries);
+        }, cancellationToken);
+
+    /// <summary>
+    /// A store in one command, whose T-SQL runs one transaction and returns its status (<see cref="SqlServerTransactionsBatch"/>).
+    /// </summary>
+    private Task<StoreResult> StoreSqlServerAsync(TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken) =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
+        {
+            await using var command = SqlServerTransactionsBatch.CreateStore(dataSource, key, request);
+            await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            await reader.ReadAsync(ct).ConfigureAwait(false);
+            return reader.GetInt32(0) switch
+            {
+                SqlServerTransactionsBatch.Stored => new StoreResult(StoreStatus.Stored, DeletedEntries: reader.GetInt32(1)),
+                SqlServerTransactionsBatch.MissingCommitRecord => new StoreResult(StoreStatus.MissingCommitRecord),
+                _ => new StoreResult(StoreStatus.Conflict),
+            };
         }, cancellationToken);
 }
