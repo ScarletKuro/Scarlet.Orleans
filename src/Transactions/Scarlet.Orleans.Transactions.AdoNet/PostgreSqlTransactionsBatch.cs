@@ -71,25 +71,30 @@ internal static class PostgreSqlTransactionsBatch
             var sequences = string.Join(", ", request.Prepared.Select(e => e.SequenceId.ToString(CultureInfo.InvariantCulture)));
             Add(batch, key, guard, $"DELETE FROM {Entries} e USING {States} s WHERE e.key_hash = @key_hash AND {Guard} AND e.sequence_id IN ({sequences}) AND e.sequence_id > s.committed_sequence_id");
 
-            var values = new StringBuilder();
-            var parameters = new List<(string, object?, DbType)>();
-            for (var i = 0; i < request.Prepared.Count; i++)
+            // A statement takes at most 65,535 parameters, so the entries are inserted in chunks, each its own command in the
+            // same batch, which keeps the store one round trip and one transaction.
+            foreach (var chunk in request.Prepared.Chunk(TransactionsSql.EntriesPerInsert))
             {
-                var entry = request.Prepared[i];
-                values.Append(CultureInfo.InvariantCulture, $"{(i == 0 ? "" : ", ")}(@s{i}::bigint, @t{i}, @c{i}::bigint, @m{i}::bytea, @p{i}::bytea)");
-                parameters.Add(($"s{i}", entry.SequenceId, DbType.Int64));
-                parameters.Add(($"t{i}", entry.TransactionId, DbType.String));
-                parameters.Add(($"c{i}", entry.TimestampTicks, DbType.Int64));
-                parameters.Add(($"m{i}", entry.TransactionManager, DbType.Binary));
-                parameters.Add(($"p{i}", entry.Payload, DbType.Binary));
-            }
+                var values = new StringBuilder();
+                var parameters = new List<(string, object?, DbType)>();
+                for (var i = 0; i < chunk.Length; i++)
+                {
+                    var entry = chunk[i];
+                    values.Append(CultureInfo.InvariantCulture, $"{(i == 0 ? "" : ", ")}(@s{i}::bigint, @t{i}, @c{i}::bigint, @m{i}::bytea, @p{i}::bytea)");
+                    parameters.Add(($"s{i}", entry.SequenceId, DbType.Int64));
+                    parameters.Add(($"t{i}", entry.TransactionId, DbType.String));
+                    parameters.Add(($"c{i}", entry.TimestampTicks, DbType.Int64));
+                    parameters.Add(($"m{i}", entry.TransactionManager, DbType.Binary));
+                    parameters.Add(($"p{i}", entry.Payload, DbType.Binary));
+                }
 
-            Add(batch, key, guard,
-                $"INSERT INTO {Entries} (key_hash, sequence_id, transaction_id, timestamp_ticks, transaction_manager, payload) " +
-                $"SELECT @key_hash, v.sequence_id, v.transaction_id, v.timestamp_ticks, v.transaction_manager, v.payload " +
-                $"FROM (VALUES {values}) AS v(sequence_id, transaction_id, timestamp_ticks, transaction_manager, payload) " +
-                $"JOIN {States} s ON {Guard} WHERE v.sequence_id > s.committed_sequence_id",
-                [.. parameters]);
+                Add(batch, key, guard,
+                    $"INSERT INTO {Entries} (key_hash, sequence_id, transaction_id, timestamp_ticks, transaction_manager, payload) " +
+                    $"SELECT @key_hash, v.sequence_id, v.transaction_id, v.timestamp_ticks, v.transaction_manager, v.payload " +
+                    $"FROM (VALUES {values}) AS v(sequence_id, transaction_id, timestamp_ticks, transaction_manager, payload) " +
+                    $"JOIN {States} s ON {Guard} WHERE v.sequence_id > s.committed_sequence_id",
+                    [.. parameters]);
+            }
         }
 
         if (request.CommitUpTo is { } commitUpTo)

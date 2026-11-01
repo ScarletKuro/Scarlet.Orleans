@@ -179,6 +179,23 @@ public abstract class TransactionalStateStoreTests(DatabaseFixture fixture) : IA
         Assert.Equal(151, loaded.Entries.Count);
     }
 
+    /// <summary>
+    /// More prepares than one statement can take as parameters: PostgreSQL allows 65,535, five per entry.
+    /// </summary>
+    [Fact]
+    public async Task PreparesBeyondOneStatementsParameterLimit_AreStoredInOneStore()
+    {
+        var key = NewKey();
+        var entries = Enumerable.Range(1, 14_000).Select(i => Entry(i)).ToArray();
+
+        var etag = await StoreAsync(key, null, entries);
+        await StoreAsync(key, etag, [], commitUpTo: 13_999);
+
+        var loaded = await LoadAsync(key);
+        Assert.Equal(13_999, loaded.CommittedSequenceId);
+        Assert.Equal(new long[] { 13_999, 14_000 }, Sequences(loaded));
+    }
+
     private async Task<byte[]> StoreAsync(TransactionalStateKey key, byte[]? expectedETag, StoredEntry[] prepared, long? commitUpTo = null, long? abortAfter = null)
     {
         var request = Request(expectedETag, prepared, commitUpTo, abortAfter);
