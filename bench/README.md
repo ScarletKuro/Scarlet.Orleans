@@ -144,8 +144,6 @@ in `results/`.
 
 - [Persistence: local run, 2026-10-24](results/2026-10-24-local.md)
 - [Reminders: two local runs across all four engines, 2026-10-26](results/2026-10-26-reminders-local.md)
-- [Reminders: 36-second SQLite soak smoke run, 2026-10-26](results/2026-10-26-reminders-soak-smoke.md)
 - [Grain directory: two local runs across all four engines, 2026-10-28](results/2026-10-28-grain-directory-local.md)
-- [Grain directory: 36-second soak smoke run across all four engines, 2026-10-28](results/2026-10-28-grain-directory-soak-smoke.md)
 - [Clustering: local run across all four engines, 2026-10-31](results/2026-10-31-clustering-local.md)
 - [Transactional state: local run across all four engines, 2026-11-01](results/2026-11-01-transactions-local.md)

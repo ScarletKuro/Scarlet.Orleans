@@ -77,6 +77,21 @@ writers need.
   connection the error surfaces, and Orleans loads the state again before its next store. Operations run outside any
   ambient `TransactionScope`.
 
+## Storage errors
+
+When a store fails, Orleans aborts the transaction and returns the driver's exception to the caller as its inner
+exception. Orleans serializes exceptions only from the `Microsoft`, `System` and `Azure` namespaces by default, so
+callers on another silo or a client receive an Npgsql, MySqlConnector or MySql.Data error as a `CodecNotFoundException`
+instead. To get the real error, allow the driver's namespace on silos and clients:
+
+```csharp
+services.Configure<ExceptionSerializationOptions>(options =>
+{
+    options.SupportedNamespacePrefixes.Add("Npgsql");
+    options.SupportedNamespacePrefixes.Add("MySql"); // MySqlConnector and MySql.Data
+});
+```
+
 The tables can be shared with `Scarlet.Orleans.Transactions.EntityFrameworkCore`, and the database with the other
 Scarlet.Orleans components. Diagnostics and supported versions are described in the
 [repository](https://github.com/ScarletKuro/Scarlet.Orleans#readme).

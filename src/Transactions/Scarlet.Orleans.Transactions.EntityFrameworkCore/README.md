@@ -67,6 +67,32 @@ When a later package version needs a newer schema, its release notes give the ve
   database reports that they were not applied; after a broken connection Orleans loads the state again. Loads use the
   strategy.
 
+## Performance
+
+A store is several statements in one transaction, each its own round trip, because EF Core has no way to send them as
+one batch without provider-specific SQL. `Scarlet.Orleans.Transactions.AdoNet` sends a store as one batch or command
+per engine, and on the same server database it is two to five times faster: in local benchmarks the EF Core flavour
+handled about a fifth of the ADO.NET flavour's transfers per second on PostgreSQL, a third on SQL Server and half on
+MySQL. On SQLite, whose single writer limits both, they are close. Both write
+only what changed, a fifteenth to a twentieth of the bytes Orleans writes through grain storage. Choose this package
+when your migrations and `DbContext` should own the Orleans tables, and the ADO.NET flavour when throughput matters;
+both use the same tables.
+
+## Storage errors
+
+When a store fails, Orleans aborts the transaction and returns the provider's exception to the caller as its inner
+exception. Orleans serializes exceptions only from the `Microsoft`, `System` and `Azure` namespaces by default, so
+callers on another silo or a client receive an error from Npgsql, MySqlConnector or MySql.Data as a
+`CodecNotFoundException` instead. To get the real error, allow the driver's namespace on silos and clients:
+
+```csharp
+services.Configure<ExceptionSerializationOptions>(options =>
+{
+    options.SupportedNamespacePrefixes.Add("Npgsql");
+    options.SupportedNamespacePrefixes.Add("MySql"); // MySqlConnector and MySql.Data
+});
+```
+
 `MySql.EntityFrameworkCore` runs on Oracle's MySql.Data, which has known bugs: concurrent TLS connection opens can
 corrupt its state, after which every open in the process fails, and after a failover some calls can hang on dead
 connections. Prefer Microting's provider for MySQL; see the
