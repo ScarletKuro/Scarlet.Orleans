@@ -99,8 +99,19 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
+      # A session left in its transaction ends with the test process, so long transactions are sampled while tests run.
+      - name: Sample long transactions
+        run: |
+          nohup bash -c 'while true; do docker exec ${{ job.services.db.id }} mysql -uroot -pscarlet-test-1 -N -e "
+            SELECT NOW(), t.trx_mysql_thread_id, t.trx_state, TIMESTAMPDIFF(SECOND, t.trx_started, NOW()), t.trx_rows_locked,
+                   p.COMMAND, p.TIME, p.DB, LEFT(COALESCE(p.INFO, t.trx_query, \"\"), 200)
+            FROM information_schema.innodb_trx t LEFT JOIN information_schema.PROCESSLIST p ON p.ID = t.trx_mysql_thread_id
+            WHERE t.trx_started < NOW() - INTERVAL 20 SECOND" 2>/dev/null; sleep 5; done' > long-transactions.log 2>&1 &
       - run: dotnet test --project test/Transactions/Scarlet.Orleans.Transactions.AdoNet.Tests -c $CONFIGURATION
       - run: dotnet test --project test/Transactions/Scarlet.Orleans.Transactions.EntityFrameworkCore.Tests -c $CONFIGURATION
+      - name: Long transactions
+        if: failure()
+        run: head -n 200 long-transactions.log
 
   mariadb:
     name: Transactions, MariaDB 11.4
