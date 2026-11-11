@@ -27,10 +27,10 @@ var failures = new List<string>();
 var report = new StringBuilder()
     .AppendLine(CultureInfo.InvariantCulture, $"# Streaming benchmarks, {DateTimeOffset.UtcNow:yyyy-MM-dd}")
     .AppendLine()
-    .AppendLine(CultureInfo.InvariantCulture, $"{Environment.ProcessorCount} logical processors, .NET {Environment.Version}, {Bench.QueueCount} queues per provider. Enqueue: {Bench.Sequential} events sent one at a time from a client. Delivery: {Bench.Producers} client producers, each sending to its own stream for {Bench.Duration.TotalSeconds:0} s, read by one implicitly subscribed consumer grain per stream; throughput counts deliveries over the time from the first send to the last delivery, and latency runs from send to consumer. Latencies in milliseconds. Every event must be delivered within {Bench.DrainTimeout.TotalSeconds:0} s of the last send, or the run is incomplete; deliveries beyond the events sent are duplicates.")
+    .AppendLine(CultureInfo.InvariantCulture, $"{Environment.ProcessorCount} logical processors, .NET {Environment.Version}, {Bench.QueueCount} queues per provider. Enqueue: {Bench.Sequential} events sent one at a time from a client. Delivery: {Bench.Producers} client producers, each sending to its own stream for {Bench.Duration.TotalSeconds:0} s as fast as they can, read by one implicitly subscribed consumer grain per stream; throughput counts deliveries over the time from the first send to the last delivery, and latency runs from send to consumer. Faster enqueues mean more load, so the paced run sends one event every {Bench.PacedInterval.TotalMilliseconds:0} ms per producer ({Bench.Producers * 1000 / (int)Bench.PacedInterval.TotalMilliseconds} events per second), and compares latency at the same load. Latencies in milliseconds. Every event must be delivered within {Bench.DrainTimeout.TotalSeconds:0} s of the last send, or the run is incomplete; deliveries beyond the events sent are duplicates.")
     .AppendLine()
-    .AppendLine("| Engine | Provider | Enqueue p50 | Enqueue p99 | Sent | Delivered/s | Delivery p50 | Delivery p99 | Duplicates |")
-    .AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|");
+    .AppendLine("| Engine | Provider | Enqueue p50 | Enqueue p99 | Sent | Delivered/s | Delivery p50 | Delivery p99 | Paced p50 | Paced p99 | Duplicates |")
+    .AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
 try
 {
     foreach (var engine in engines)
@@ -44,7 +44,7 @@ try
         {
             // The in-box scripts cannot be installed on this engine, so the in-box provider is not measured here.
             failures.Add($"- {engine.Name} / {Engine.InBox}: its schema scripts failed to install: {exception.GetType().Name}: {exception.Message.Split('\n')[0]}");
-            report.AppendLine(CultureInfo.InvariantCulture, $"| {engine.Name} | {Engine.InBox} | failed, see below |  |  |  |  |  |  |");
+            report.AppendLine(CultureInfo.InvariantCulture, $"| {engine.Name} | {Engine.InBox} | failed, see below |  |  |  |  |  |  |  |  |");
             providers = [Providers.Scarlet];
         }
 
@@ -58,12 +58,12 @@ try
             {
                 var result = await Bench.RunAsync(cluster.Client, provider);
                 report.AppendLine(CultureInfo.InvariantCulture,
-                    $"| {engine.Name} | {label} | {result.EnqueueP50:0.00} | {result.EnqueueP99:0.00} | {result.Sent} | {result.PerSecond:0} | {result.DeliveryP50:0.0} | {result.DeliveryP99:0.0} | {result.Duplicates} |");
+                    $"| {engine.Name} | {label} | {result.EnqueueP50:0.00} | {result.EnqueueP99:0.00} | {result.Sent} | {result.PerSecond:0} | {result.DeliveryP50:0.0} | {result.DeliveryP99:0.0} | {result.PacedP50:0.0} | {result.PacedP99:0.0} | {result.Duplicates} |");
             }
             catch (Exception exception)
             {
                 failures.Add($"- {engine.Name} / {label}: {exception.GetType().Name}: {exception.Message.Split('\n')[0]}");
-                report.AppendLine(CultureInfo.InvariantCulture, $"| {engine.Name} | {label} | failed, see below |  |  |  |  |  |  |");
+                report.AppendLine(CultureInfo.InvariantCulture, $"| {engine.Name} | {label} | failed, see below |  |  |  |  |  |  |  |  |");
             }
         }
 
@@ -91,7 +91,7 @@ finally
     }
 }
 
-internal sealed record BenchResult(double EnqueueP50, double EnqueueP99, int Sent, double PerSecond, double DeliveryP50, double DeliveryP99, int Duplicates);
+internal sealed record BenchResult(double EnqueueP50, double EnqueueP99, int Sent, double PerSecond, double DeliveryP50, double DeliveryP99, double PacedP50, double PacedP99, int Duplicates);
 
 internal static class Bench
 {
@@ -99,6 +99,9 @@ internal static class Bench
     public const int Sequential = 1000;
     public const int Producers = 16;
     public static readonly TimeSpan Duration = TimeSpan.FromSeconds(10);
+
+    /// <summary>One event every 20 ms per producer: 800 events per second in all, below either provider's throughput.</summary>
+    public static readonly TimeSpan PacedInterval = TimeSpan.FromMilliseconds(20);
     public static readonly TimeSpan DrainTimeout = TimeSpan.FromMinutes(2);
 
     public static IReadOnlyList<string> ProvidersOf(Engine engine) => engine.Name == "Sqlite" ? [Providers.Scarlet] : [Providers.Scarlet, Providers.InBox];
@@ -127,6 +130,19 @@ internal static class Bench
         await DrainAsync(Sequential);
         Array.Sort(enqueue);
 
+        var flat = await DeliverAsync(streams, space, pace: null);
+        var paced = await DeliverAsync(streams, space, PacedInterval);
+        return new(
+            Percentile(enqueue, 0.5), Percentile(enqueue, 0.99), flat.Sent, flat.PerSecond, flat.P50, flat.P99,
+            paced.P50, paced.P99, flat.Duplicates + paced.Duplicates);
+    }
+
+    /// <summary>
+    /// <see cref="Producers"/> producers send to their own streams for <see cref="Duration"/>, as fast as they can, or one
+    /// event every <paramref name="pace"/> each, which offers both providers the same load.
+    /// </summary>
+    private static async Task<(int Sent, double PerSecond, double P50, double P99, int Duplicates)> DeliverAsync(IStreamProvider streams, string space, TimeSpan? pace)
+    {
         Deliveries.Reset();
         var sent = 0;
         var start = Stopwatch.GetTimestamp();
@@ -134,19 +150,22 @@ internal static class Bench
         await Task.WhenAll(Enumerable.Range(0, Producers).Select(_ => Task.Run(async () =>
         {
             var stream = streams.GetStream<long>(StreamId.Create(space, Guid.NewGuid()));
+            using var timer = pace is { } interval ? new PeriodicTimer(interval) : null;
             while (!stop.IsCancellationRequested)
             {
                 await stream.OnNextAsync(Stopwatch.GetTimestamp());
                 Interlocked.Increment(ref sent);
+                if (timer is not null && !await timer.WaitForNextTickAsync(CancellationToken.None))
+                {
+                    return;
+                }
             }
         })));
 
         await DrainAsync(sent);
         var elapsed = Stopwatch.GetElapsedTime(start);
         var latencies = Deliveries.Latencies();
-        return new(
-            Percentile(enqueue, 0.5), Percentile(enqueue, 0.99), sent, latencies.Length / elapsed.TotalSeconds,
-            Percentile(latencies, 0.5), Percentile(latencies, 0.99), latencies.Length - sent);
+        return (sent, latencies.Length / elapsed.TotalSeconds, Percentile(latencies, 0.5), Percentile(latencies, 0.99), latencies.Length - sent);
     }
 
     public static InProcessTestCluster CreateCluster(Engine engine, bool withInBox)
