@@ -12,17 +12,18 @@ CREATE TABLE IF NOT EXISTS orleans_stream_queue (
     CONSTRAINT pk_orleans_stream_queue PRIMARY KEY (queue_hash));
 
 CREATE TABLE IF NOT EXISTS orleans_stream_message (
-    message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL CONSTRAINT pk_orleans_stream_message PRIMARY KEY AUTOINCREMENT,
     queue_hash BLOB NOT NULL,
     message_key BLOB NOT NULL,
     dequeued INTEGER NOT NULL,
     visible_on INTEGER NOT NULL,
     expires_on INTEGER NOT NULL,
     created_on TEXT NOT NULL,
-    payload BLOB NOT NULL,
-    CONSTRAINT uq_orleans_stream_message_key UNIQUE (message_key));
+    payload BLOB NOT NULL);
 
 CREATE UNIQUE INDEX IF NOT EXISTS ix_orleans_stream_message_queue ON orleans_stream_message (queue_hash, message_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ix_orleans_stream_message_key ON orleans_stream_message (message_key);
 
 CREATE TABLE IF NOT EXISTS orleans_stream_dead_letter (
     queue_hash BLOB NOT NULL,

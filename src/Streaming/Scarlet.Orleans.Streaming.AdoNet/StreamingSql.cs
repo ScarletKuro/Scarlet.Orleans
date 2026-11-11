@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Numerics;
 using System.Text;
 using Scarlet.Orleans.Relational;
 
@@ -127,6 +128,24 @@ internal static class StreamingSql
     public static string ReleaseMessages(int count) => $"UPDATE {Messages} SET visible_on = @now WHERE queue_hash = @queue_hash AND ({ReceiptList(count)})";
 
     public static void AddQueue(DbCommand command, StreamQueueKey queue) => command.AddParameter("queue_hash", queue.Hash, DbType.Binary);
+
+    /// <summary>
+    /// Pads <paramref name="receipts"/> to the next power of two, or to <see cref="ReceiptsPerStatement"/>, by repeating
+    /// the last one.
+    /// </summary>
+    public static MessageReceipt[] Pad(MessageReceipt[] receipts)
+    {
+        var size = Math.Min((int)BitOperations.RoundUpToPowerOf2((uint)receipts.Length), ReceiptsPerStatement);
+        if (size == receipts.Length)
+        {
+            return receipts;
+        }
+
+        var padded = new MessageReceipt[size];
+        receipts.CopyTo(padded, 0);
+        padded.AsSpan(receipts.Length).Fill(receipts[^1]);
+        return padded;
+    }
 
     /// <summary>Adds the receipts as <c>@s{i}</c> (message ID) and <c>@r{i}</c> (receipt).</summary>
     public static void AddReceipts(DbCommand command, ReadOnlySpan<MessageReceipt> receipts)

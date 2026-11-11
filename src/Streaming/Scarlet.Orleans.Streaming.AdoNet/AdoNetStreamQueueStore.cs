@@ -297,11 +297,17 @@ internal sealed class AdoNetStreamQueueStore(DbDataSource dataSource, string? en
     /// Runs <paramref name="sql"/> for each chunk of receipts, each its own statement, and sums the rows it changed.
     /// Each chunk is idempotent, so a repeated one changes nothing.
     /// </summary>
+    /// <remarks>
+    /// A chunk is padded to the next of a few sizes by repeating its last receipt, which matches the same row again and
+    /// changes no count, so the statement's text takes one of a few forms and SQL Server reuses their plans instead of
+    /// compiling one for every number of receipts.
+    /// </remarks>
     private async Task<int> ForEachChunkAsync(StreamQueueKey queue, IReadOnlyList<MessageReceipt> receipts, Func<int, string> sql, DateTimeOffset? now, CancellationToken cancellationToken)
     {
         var changed = 0;
-        foreach (var chunk in receipts.Chunk(StreamingSql.ReceiptsPerStatement))
+        foreach (var unpadded in receipts.Chunk(StreamingSql.ReceiptsPerStatement))
         {
+            var chunk = StreamingSql.Pad(unpadded);
             changed += await TransientRetry.ExecuteAsync(timeProvider, async ct =>
             {
                 await using var command = dataSource.CreateCommand(sql(chunk.Length));

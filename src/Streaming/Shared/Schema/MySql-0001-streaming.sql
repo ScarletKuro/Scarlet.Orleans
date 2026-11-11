@@ -1,6 +1,5 @@
 -- Times that queries compare (visible_on, expires_on, remove_on, evict_on) are UTC ticks, which compare exactly on every
--- engine and driver; created_on and dead_on are only read by people. InnoDB requires an auto-increment column to lead an
--- index, hence ix_orleans_stream_message_id.
+-- engine and driver; created_on and dead_on are only read by people.
 CREATE TABLE IF NOT EXISTS orleans_stream_queue (
     queue_hash binary(16) NOT NULL,
     queue_identity longblob NOT NULL,
@@ -20,9 +19,9 @@ CREATE TABLE IF NOT EXISTS orleans_stream_message (
     expires_on bigint NOT NULL,
     created_on datetime(6) NOT NULL,
     payload longblob NOT NULL,
-    CONSTRAINT pk_orleans_stream_message PRIMARY KEY (queue_hash, message_id),
-    CONSTRAINT uq_orleans_stream_message_key UNIQUE (message_key),
-    INDEX ix_orleans_stream_message_id (message_id)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+    CONSTRAINT pk_orleans_stream_message PRIMARY KEY (message_id),
+    UNIQUE INDEX ix_orleans_stream_message_queue (queue_hash, message_id),
+    UNIQUE INDEX ix_orleans_stream_message_key (message_key)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 
 CREATE TABLE IF NOT EXISTS orleans_stream_dead_letter (
     queue_hash binary(16) NOT NULL,
