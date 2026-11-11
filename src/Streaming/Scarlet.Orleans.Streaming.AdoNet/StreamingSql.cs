@@ -121,11 +121,18 @@ internal static class StreamingSql
             $"(SELECT message_id FROM {DeadLetters} WHERE queue_hash = @queue_hash AND remove_on <= @now ORDER BY remove_on LIMIT @max_count)",
     };
 
-    /// <summary>Deletes the messages whose receipts match.</summary>
-    public static string ConfirmMessages(int count) => $"DELETE FROM {Messages} WHERE queue_hash = @queue_hash AND ({ReceiptList(count)})";
+    /// <summary>Deletes the messages whose receipts match (<see cref="ByReceipts"/>).</summary>
+    public static string ConfirmMessages(int count) => $"DELETE FROM {Messages} WHERE {ByReceipts(count)}";
 
-    /// <summary>Makes the messages whose receipts match visible now.</summary>
-    public static string ReleaseMessages(int count) => $"UPDATE {Messages} SET visible_on = @now WHERE queue_hash = @queue_hash AND ({ReceiptList(count)})";
+    /// <summary>Makes the messages whose receipts match visible now (<see cref="ByReceipts"/>).</summary>
+    public static string ReleaseMessages(int count) => $"UPDATE {Messages} SET visible_on = @now WHERE {ByReceipts(count)}";
+
+    /// <summary>
+    /// The messages whose receipts match. The ID list lets the engine seek the key for each message, and the receipts are
+    /// checked on the rows found; with the receipts alone, SQL Server scanned the queue's whole range, including every
+    /// message dequeued but not yet confirmed, and checked each row against all of them.
+    /// </summary>
+    private static string ByReceipts(int count) => $"message_id IN ({IdList(count)}) AND queue_hash = @queue_hash AND ({ReceiptList(count)})";
 
     public static void AddQueue(DbCommand command, StreamQueueKey queue) => command.AddParameter("queue_hash", queue.Hash, DbType.Binary);
 

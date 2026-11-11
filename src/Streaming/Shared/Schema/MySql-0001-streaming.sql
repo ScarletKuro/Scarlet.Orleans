@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS orleans_stream_message (
     created_on datetime(6) NOT NULL,
     payload longblob NOT NULL,
     CONSTRAINT pk_orleans_stream_message PRIMARY KEY (message_id),
-    UNIQUE INDEX ix_orleans_stream_message_queue (queue_hash, message_id),
+    INDEX ix_orleans_stream_message_queue (queue_hash, message_id, dequeued, visible_on, expires_on),
     UNIQUE INDEX ix_orleans_stream_message_key (message_key)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 
 CREATE TABLE IF NOT EXISTS orleans_stream_dead_letter (

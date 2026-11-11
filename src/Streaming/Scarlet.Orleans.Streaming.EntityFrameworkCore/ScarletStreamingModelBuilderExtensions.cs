@@ -49,7 +49,9 @@ public static class ScarletStreamingModelBuilderExtensions
             entity.Property(r => r.ExpiresOn).HasColumnName("expires_on");
             entity.Property(r => r.CreatedOn).HasColumnName("created_on");
             entity.Property(r => r.Payload).HasColumnName("payload");
-            entity.HasIndex(r => new { r.QueueHash, r.MessageId }).IsUnique().HasDatabaseName("ix_orleans_stream_message_queue");
+            // Dequeue reads a queue in message order and filters on the trailing columns within the index, so it reads no
+            // table row of a message it does not take, such as the many dequeued but not yet confirmed.
+            entity.HasIndex(r => new { r.QueueHash, r.MessageId, r.Dequeued, r.VisibleOn, r.ExpiresOn }).HasDatabaseName("ix_orleans_stream_message_queue");
             entity.HasIndex(r => r.MessageKey).IsUnique().HasDatabaseName("ix_orleans_stream_message_key");
         });
 

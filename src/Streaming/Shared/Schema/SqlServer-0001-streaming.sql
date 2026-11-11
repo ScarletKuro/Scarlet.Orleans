@@ -24,7 +24,7 @@ CREATE TABLE orleans_stream_message (
     CONSTRAINT pk_orleans_stream_message PRIMARY KEY (message_id));
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'ix_orleans_stream_message_queue' AND object_id = OBJECT_ID(N'orleans_stream_message'))
-CREATE UNIQUE INDEX ix_orleans_stream_message_queue ON orleans_stream_message (queue_hash, message_id);
+CREATE INDEX ix_orleans_stream_message_queue ON orleans_stream_message (queue_hash, message_id, dequeued, visible_on, expires_on);
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'ix_orleans_stream_message_key' AND object_id = OBJECT_ID(N'orleans_stream_message'))
 CREATE UNIQUE INDEX ix_orleans_stream_message_key ON orleans_stream_message (message_key);
