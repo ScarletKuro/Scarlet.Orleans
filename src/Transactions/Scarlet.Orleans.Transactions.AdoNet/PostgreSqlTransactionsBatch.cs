@@ -7,8 +7,8 @@ using Scarlet.Orleans.Relational;
 namespace Scarlet.Orleans.Transactions.AdoNet;
 
 /// <summary>
-/// PostgreSQL loads and stores in one round trip each: a load is one statement, which PostgreSQL reads from one
-/// snapshot, and a store is one batch, which Npgsql sends with one sync, so PostgreSQL runs it as one implicit
+/// PostgreSQL loads and stores in one round trip each: a load is one statement
+/// (<see cref="TransactionsSql.SelectStateWithEntries"/>), which PostgreSQL reads from one snapshot, and a store is one batch, which Npgsql sends with one sync, so PostgreSQL runs it as one implicit
 /// transaction that an error rolls back whole.
 /// </summary>
 /// <remarks>
@@ -34,14 +34,6 @@ internal static class PostgreSqlTransactionsBatch
     private const string Entries = TransactionsSchema.EntryTableName;
 
     private const string Guard = "s.key_hash = @key_hash AND s.state_identity = @state_identity AND s.etag = @guard";
-
-    /// <summary>
-    /// The state row and its entries from the committed one on, one row per entry, or one row with no entry columns.
-    /// </summary>
-    public const string Load =
-        $"SELECT s.state_identity, s.etag, s.committed_sequence_id, s.metadata, e.sequence_id, e.transaction_id, e.timestamp_ticks, e.transaction_manager, e.payload " +
-        $"FROM {States} s LEFT JOIN {Entries} e ON e.key_hash = s.key_hash AND e.sequence_id >= s.committed_sequence_id " +
-        "WHERE s.key_hash = @key_hash ORDER BY e.sequence_id";
 
     public static DbBatch CreateStore(DbDataSource dataSource, TransactionalStateKey key, StoreRequest request)
     {

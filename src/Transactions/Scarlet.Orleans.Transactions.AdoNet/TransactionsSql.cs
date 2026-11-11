@@ -34,6 +34,15 @@ internal static class TransactionsSql
 
     public const string SelectState = $"SELECT state_identity, etag, committed_sequence_id, metadata FROM {States} WHERE key_hash = @key_hash";
 
+    /// <summary>
+    /// The state row and its entries from the committed one on, one row per entry, or one row with no entry columns. As
+    /// one statement, it reads from one snapshot on PostgreSQL, MySQL and MariaDB.
+    /// </summary>
+    public const string SelectStateWithEntries =
+        $"SELECT s.state_identity, s.etag, s.committed_sequence_id, s.metadata, e.sequence_id, e.transaction_id, e.timestamp_ticks, e.transaction_manager, e.payload " +
+        $"FROM {States} s LEFT JOIN {Entries} e ON e.key_hash = s.key_hash AND e.sequence_id >= s.committed_sequence_id " +
+        "WHERE s.key_hash = @key_hash ORDER BY e.sequence_id";
+
     public const string SelectIdentity = $"SELECT state_identity FROM {States} WHERE key_hash = @key_hash";
 
     public const string SelectCommitted = $"SELECT committed_sequence_id FROM {States} WHERE key_hash = @key_hash";

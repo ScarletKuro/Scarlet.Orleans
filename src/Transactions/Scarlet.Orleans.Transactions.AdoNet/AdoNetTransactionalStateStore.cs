@@ -42,7 +42,7 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
     public Task<StoredTransactionalState?> LoadAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
         engine switch
         {
-            RelationalEngine.PostgreSql => LoadPostgreSqlAsync(key, cancellationToken),
+            RelationalEngine.PostgreSql or RelationalEngine.MySql or RelationalEngine.MariaDb => LoadInOneStatementAsync(key, cancellationToken),
             RelationalEngine.SqlServer => LoadSqlServerAsync(key, cancellationToken),
             _ => LoadInTransactionAsync(key, cancellationToken),
         };
@@ -84,11 +84,13 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
 
     public async Task<StoreResult> StoreAsync(TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken)
     {
-        var result = engine == RelationalEngine.SqlServer && request.Prepared.Count <= SqlServerTransactionsBatch.MaxPrepared
-            ? await StoreSqlServerAsync(key, request, cancellationToken).ConfigureAwait(false)
-            : engine == RelationalEngine.PostgreSql
-            ? await StorePostgreSqlAsync(key, request, cancellationToken).ConfigureAwait(false)
-            : await InTransactionAsync(IsolationLevel.ReadCommitted, (connection, transaction, ct) => StoreCoreAsync(connection, transaction, key, request, ct), cancellationToken).ConfigureAwait(false);
+        var result = engine switch
+        {
+            RelationalEngine.SqlServer when request.Prepared.Count <= SqlServerTransactionsBatch.MaxPrepared => await StoreSqlServerAsync(key, request, cancellationToken).ConfigureAwait(false),
+            RelationalEngine.PostgreSql => await StorePostgreSqlAsync(key, request, cancellationToken).ConfigureAwait(false),
+            RelationalEngine.MySql or RelationalEngine.MariaDb when request.Prepared.Count <= MySqlTransactionsBatch.MaxPrepared => await StoreMySqlAsync(key, request, cancellationToken).ConfigureAwait(false),
+            _ => await InTransactionAsync(IsolationLevel.ReadCommitted, (connection, transaction, ct) => StoreCoreAsync(connection, transaction, key, request, ct), cancellationToken).ConfigureAwait(false),
+        };
         if (result.Status != StoreStatus.Conflict)
         {
             return result;
@@ -262,12 +264,12 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
     }
 
     /// <summary>
-    /// A load in one statement, which PostgreSQL reads from one snapshot (<see cref="PostgreSqlTransactionsBatch"/>).
+    /// A load in one statement, which reads from one snapshot (<see cref="TransactionsSql.SelectStateWithEntries"/>).
     /// </summary>
-    private Task<StoredTransactionalState?> LoadPostgreSqlAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
+    private Task<StoredTransactionalState?> LoadInOneStatementAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
         TransientRetry.ExecuteAsync(timeProvider, async ct =>
         {
-            await using var select = dataSource.CreateCommand(PostgreSqlTransactionsBatch.Load);
+            await using var select = dataSource.CreateCommand(TransactionsSql.SelectStateWithEntries);
             TransactionsSql.AddKey(select, key);
             await using var reader = await select.ExecuteReaderAsync(ct).ConfigureAwait(false);
             if (!await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -355,5 +357,64 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
                 SqlServerTransactionsBatch.MissingCommitRecord => new StoreResult(StoreStatus.MissingCommitRecord),
                 _ => new StoreResult(StoreStatus.Conflict),
             };
+        }, cancellationToken);
+
+    /// <summary>
+    /// A store in two commands, which lock the state row, then write and commit (<see cref="MySqlTransactionsBatch"/>).
+    /// </summary>
+    private Task<StoreResult> StoreMySqlAsync(TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken) =>
+        TransientRetry.ExecuteAsync(timeProvider, async ct =>
+        {
+            await using var connection = await dataSource.OpenConnectionAsync(ct).ConfigureAwait(false);
+            var committed = false;
+            try
+            {
+                object[]? locked;
+                try
+                {
+                    await using var command = MySqlTransactionsBatch.CreateLock(connection, key, request);
+                    await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                    locked = await MySqlTransactionsBatch.ReadRowAsync(reader, ct).ConfigureAwait(false);
+                }
+                catch (DbException exception) when (request.ExpectedETag is null && DbErrors.IsDuplicateKey(exception))
+                {
+                    return new StoreResult(StoreStatus.Conflict);
+                }
+
+                if (locked is null)
+                {
+                    return new StoreResult(StoreStatus.Conflict);
+                }
+
+                var plan = StorePlan.Create(request, Convert.ToInt64(locked[0], CultureInfo.InvariantCulture));
+                if (plan.Advances && !MySqlTransactionsBatch.CommitEntryRemains(plan, Convert.ToInt64(locked[1], CultureInfo.InvariantCulture) > 0))
+                {
+                    return new StoreResult(StoreStatus.MissingCommitRecord);
+                }
+
+                var deleted = 0;
+                await using (var command = MySqlTransactionsBatch.CreateWrite(connection, key, request, plan))
+                await using (var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false))
+                {
+                    for (var counts = (plan.AbortAbove is null ? 0 : 1) + (plan.Advances ? 1 : 0); counts > 0; counts--)
+                    {
+                        deleted += Convert.ToInt32((await MySqlTransactionsBatch.ReadRowAsync(reader, ct).ConfigureAwait(false))![0], CultureInfo.InvariantCulture);
+                    }
+
+                    while (await reader.NextResultAsync(ct).ConfigureAwait(false))
+                    {
+                    }
+                }
+
+                committed = true;
+                return new StoreResult(StoreStatus.Stored, DeletedEntries: deleted);
+            }
+            finally
+            {
+                if (!committed)
+                {
+                    await MySqlTransactionsBatch.RollbackAsync(connection).ConfigureAwait(false);
+                }
+            }
         }, cancellationToken);
 }
