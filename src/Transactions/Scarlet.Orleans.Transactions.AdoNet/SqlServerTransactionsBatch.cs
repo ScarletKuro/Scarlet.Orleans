@@ -83,13 +83,16 @@ internal static class SqlServerTransactionsBatch
 
         if (request.Prepared.Count > 0)
         {
-            var sequences = string.Join(", ", request.Prepared.Select(e => e.SequenceId.ToString(CultureInfo.InvariantCulture)));
-            sql.Append(CultureInfo.InvariantCulture, $"DELETE FROM {Entries} WHERE key_hash = @key_hash AND sequence_id IN ({sequences}) AND sequence_id > @previous; ");
+            // Sequence numbers are parameters, not literals, so the text depends only on the number of prepares and SQL
+            // Server reuses its cached plan instead of compiling every store.
+            var sequences = new StringBuilder();
             var values = new StringBuilder();
             for (var i = 0; i < request.Prepared.Count; i++)
             {
                 var entry = request.Prepared[i];
-                values.Append(CultureInfo.InvariantCulture, $"{(i == 0 ? "" : ", ")}(@s{i}, @t{i}, @c{i}, @m{i}, @p{i})");
+                var separator = i == 0 ? "" : ", ";
+                sequences.Append(CultureInfo.InvariantCulture, $"{separator}@s{i}");
+                values.Append(CultureInfo.InvariantCulture, $"{separator}(@s{i}, @t{i}, @c{i}, @m{i}, @p{i})");
                 command.AddParameter($"s{i}", entry.SequenceId, DbType.Int64);
                 command.AddParameter($"t{i}", entry.TransactionId, DbType.String);
                 command.AddParameter($"c{i}", entry.TimestampTicks, DbType.Int64);
@@ -98,6 +101,7 @@ internal static class SqlServerTransactionsBatch
             }
 
             sql
+                .Append(CultureInfo.InvariantCulture, $"DELETE FROM {Entries} WHERE key_hash = @key_hash AND sequence_id IN ({sequences}) AND sequence_id > @previous; ")
                 .Append(CultureInfo.InvariantCulture, $"INSERT INTO {Entries} (key_hash, sequence_id, transaction_id, timestamp_ticks, transaction_manager, payload) ")
                 .Append(CultureInfo.InvariantCulture, $"SELECT @key_hash, v.sequence_id, v.transaction_id, v.timestamp_ticks, v.transaction_manager, v.payload ")
                 .Append(CultureInfo.InvariantCulture, $"FROM (VALUES {values}) AS v(sequence_id, transaction_id, timestamp_ticks, transaction_manager, payload) WHERE v.sequence_id > @previous; ");
