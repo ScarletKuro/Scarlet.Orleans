@@ -15,6 +15,7 @@ internal sealed class RelationalQueueAdapter(
     IStreamQueueStore store,
     Serializer serializer,
     ScarletAdoNetStreamOptions options,
+    StreamingObserver observer,
     TimeProvider timeProvider) : IQueueAdapter
 {
     public string Name { get; } = name;
@@ -40,6 +41,8 @@ internal sealed class RelationalQueueAdapter(
         var payload = serializer.SerializeToArray(new RelationalBatchContainer(streamId, [.. events.Cast<object>()], requestContext));
         var now = timeProvider.GetUtcNow();
         using var suppress = new TransactionScope(TransactionScopeOption.Suppress, TransactionScopeAsyncFlowOption.Enabled);
-        await store.EnqueueAsync(queue, Guid.NewGuid(), payload, now, now + options.ExpiryTimeout, CancellationToken.None).ConfigureAwait(false);
+        await observer.ObserveAsync("enqueue", queue, () => store.EnqueueAsync(queue, Guid.NewGuid(), payload, now, now + options.ExpiryTimeout, CancellationToken.None)).ConfigureAwait(false);
+        observer.Count("enqueued", 1);
+        observer.RecordPayload(payload.Length);
     }
 }

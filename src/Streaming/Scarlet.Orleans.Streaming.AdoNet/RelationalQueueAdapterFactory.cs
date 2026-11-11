@@ -30,7 +30,9 @@ internal sealed class RelationalQueueAdapterFactory : IQueueAdapterFactory
     private readonly SimpleQueueAdapterCache cache;
     private readonly StreamPositions positions = new();
     private readonly ConcurrentDictionary<QueueId, StreamQueueKey> queues = new();
+    private readonly ConcurrentDictionary<QueueId, RelationalQueueAdapterReceiver> receivers = new();
     private readonly Lock creationLock = new();
+    private readonly StreamingObserver observer;
     private readonly RelationalStreamFailureHandler failureHandler;
     private Task<IQueueAdapter>? creation;
 
@@ -54,8 +56,16 @@ internal sealed class RelationalQueueAdapterFactory : IQueueAdapterFactory
         this.loggerFactory = loggerFactory;
         mapper = new HashRingBasedStreamQueueMapper(mapperOptions, name);
         cache = new SimpleQueueAdapterCache(cacheOptions, name, loggerFactory);
-        failureHandler = new RelationalStreamFailureHandler(store, positions, options, timeProvider);
+        observer = new StreamingObserver(name, timeProvider);
+        failureHandler = new RelationalStreamFailureHandler(store, positions, options, observer, timeProvider);
+        StreamingObserver.Track(this, name);
     }
+
+    /// <summary>The queues this silo reads now: those whose receiver it created and has not shut down.</summary>
+    public IReadOnlyCollection<QueueId> OwnedQueues => [.. receivers.Keys];
+
+    /// <summary>Messages this silo's receivers hold, dequeued and not yet confirmed or released.</summary>
+    public int HeldMessages => receivers.Values.Sum(static r => r.HeldMessages);
 
     public Task<IQueueAdapter> CreateAdapter() => CreateAdapter(CancellationToken.None);
 
@@ -81,7 +91,7 @@ internal sealed class RelationalQueueAdapterFactory : IQueueAdapterFactory
                 await store.InitializeAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            return new RelationalQueueAdapter(name, this, store, serializer, options, timeProvider);
+            return new RelationalQueueAdapter(name, this, store, serializer, options, observer, timeProvider);
         }
     }
 
@@ -91,8 +101,18 @@ internal sealed class RelationalQueueAdapterFactory : IQueueAdapterFactory
 
     public Task<IStreamFailureHandler> GetDeliveryFailureHandler(QueueId queueId) => Task.FromResult<IStreamFailureHandler>(failureHandler);
 
-    public RelationalQueueAdapterReceiver CreateReceiver(QueueId queueId) =>
-        new(GetQueue(queueId), store, positions, serializer, options, timeProvider, loggerFactory.CreateLogger<RelationalQueueAdapterReceiver>());
+    /// <summary>
+    /// Creates the receiver of a queue this silo now owns. It replaces any earlier one for the queue, and leaves the
+    /// owned queues when it shuts down.
+    /// </summary>
+    public RelationalQueueAdapterReceiver CreateReceiver(QueueId queueId)
+    {
+        var receiver = new RelationalQueueAdapterReceiver(
+            GetQueue(queueId), store, positions, serializer, options, observer, timeProvider, loggerFactory.CreateLogger<RelationalQueueAdapterReceiver>(),
+            onShutdown: stopped => receivers.TryRemove(new KeyValuePair<QueueId, RelationalQueueAdapterReceiver>(queueId, stopped)));
+        receivers[queueId] = receiver;
+        return receiver;
+    }
 
     /// <summary>The queue a stream's batches go to, by the same mapper the pulling agents read with.</summary>
     public StreamQueueKey GetQueue(StreamId streamId) => GetQueue(mapper.GetQueueForStream(streamId));

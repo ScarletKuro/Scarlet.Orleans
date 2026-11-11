@@ -16,6 +16,7 @@ internal sealed class RelationalStreamFailureHandler(
     IStreamQueueStore store,
     StreamPositions positions,
     ScarletAdoNetStreamOptions options,
+    StreamingObserver observer,
     TimeProvider timeProvider) : IStreamFailureHandler
 {
     public bool ShouldFaultSubsriptionOnError => false;
@@ -26,14 +27,16 @@ internal sealed class RelationalStreamFailureHandler(
     public Task OnSubscriptionFailure(GuidId subscriptionId, string streamProviderName, StreamId streamIdentity, StreamSequenceToken? sequenceToken) =>
         FailAsync(sequenceToken);
 
-    private Task FailAsync(StreamSequenceToken? sequenceToken)
+    private async Task FailAsync(StreamSequenceToken? sequenceToken)
     {
         if (sequenceToken is null || !positions.TryGet(sequenceToken.SequenceNumber, out var attempt))
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var now = timeProvider.GetUtcNow();
-        return store.FailAsync(attempt.Queue, attempt.Receipt, options.MaxAttempts, now, now + options.DeadLetterRetention, CancellationToken.None);
+        var outcome = await observer.ObserveAsync("fail", attempt.Queue, () =>
+            store.FailAsync(attempt.Queue, attempt.Receipt, options.MaxAttempts, now, now + options.DeadLetterRetention, CancellationToken.None)).ConfigureAwait(false);
+        observer.Count(outcome switch { FailOutcome.Retried => "retried", FailOutcome.DeadLettered => "dead_lettered", _ => "stale" }, 1);
     }
 }

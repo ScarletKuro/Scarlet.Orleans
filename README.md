@@ -108,6 +108,10 @@ builder.Services.AddOpenTelemetry()
 | `scarlet.orleans.transactions.duration` | histogram, seconds | `orleans.storage.name`, `orleans.transactions.operation` (`load`, `store`), `outcome` (`success`, `conflict`, `collision`, `error`) |
 | `scarlet.orleans.transactions.entries` | histogram, entries | `orleans.storage.name`, `change` (`written`, `deleted`) |
 | `scarlet.orleans.transactions.payload.size` | histogram, bytes | `orleans.storage.name` |
+| `scarlet.orleans.streaming.duration` | histogram, seconds | `orleans.stream.provider`, `orleans.stream.operation` (`enqueue`, `dequeue`, `confirm`, `release`, `fail`, `evict`), `outcome` (`success`, `error`) |
+| `scarlet.orleans.streaming.messages` | counter | `orleans.stream.provider`, `change` (`enqueued`, `dequeued`, `redelivered`, `confirmed`, `released`, `retried`, `stale`, `dead_lettered`, `removed`) |
+| `scarlet.orleans.streaming.payload.size` | histogram, bytes | `orleans.stream.provider` |
+| `scarlet.orleans.streaming.messages.held` | gauge | `orleans.stream.provider`: messages this process's receivers hold, dequeued and not yet confirmed or released |
 | `scarlet.orleans.retries` | counter | `error` |
 
 Each operation is also a trace span, such as `persistence write` with the grain ID, state name and outcome, or

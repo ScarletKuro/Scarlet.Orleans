@@ -27,14 +27,28 @@ internal sealed partial class RelationalQueueAdapterReceiver(
     StreamPositions positions,
     Serializer serializer,
     ScarletAdoNetStreamOptions options,
+    StreamingObserver observer,
     TimeProvider timeProvider,
-    ILogger<RelationalQueueAdapterReceiver> logger) : IQueueAdapterReceiver
+    ILogger<RelationalQueueAdapterReceiver> logger,
+    Action<RelationalQueueAdapterReceiver>? onShutdown = null) : IQueueAdapterReceiver
 {
     private readonly AdmissionGate gate = new();
     private readonly Lock pendingLock = new();
     private readonly Dictionary<long, Pending> pending = [];
     private volatile bool registered;
     private DateTimeOffset nextEvictionCheck;
+
+    /// <summary>Messages this receiver holds, dequeued and not yet confirmed or released.</summary>
+    public int HeldMessages
+    {
+        get
+        {
+            lock (pendingLock)
+            {
+                return pending.Count;
+            }
+        }
+    }
 
     [Obsolete("Orleans calls the overload with a cancellation token.")]
     public Task Initialize(TimeSpan timeout) => Initialize(timeout, CancellationToken.None);
@@ -67,7 +81,10 @@ internal sealed partial class RelationalQueueAdapterReceiver(
             var now = timeProvider.GetUtcNow();
             await EvictIfDueAsync(now, cancellationToken).ConfigureAwait(false);
 
-            var messages = await store.DequeueAsync(queue, maxCount, options.MaxAttempts, now, now + options.VisibilityTimeout, cancellationToken).ConfigureAwait(false);
+            var messages = await observer.ObserveAsync("dequeue", queue, () =>
+                store.DequeueAsync(queue, maxCount, options.MaxAttempts, now, now + options.VisibilityTimeout, cancellationToken)).ConfigureAwait(false);
+            observer.Count("dequeued", messages.Count);
+            observer.Count("redelivered", messages.Count(static m => m.Receipt > 1));
             var batches = new List<IBatchContainer>(messages.Count);
             foreach (var message in messages)
             {
@@ -81,7 +98,9 @@ internal sealed partial class RelationalQueueAdapterReceiver(
                 {
                     // A payload that does not deserialize never will, so it goes to the dead letters at once.
                     LogUnreadableMessage(exception, message.MessageId, queue);
-                    await store.FailAsync(queue, message.ToReceipt(), message.Receipt, now, now + options.DeadLetterRetention, cancellationToken).ConfigureAwait(false);
+                    var outcome = await observer.ObserveAsync("fail", queue, () =>
+                        store.FailAsync(queue, message.ToReceipt(), message.Receipt, now, now + options.DeadLetterRetention, cancellationToken)).ConfigureAwait(false);
+                    observer.Count("dead_lettered", outcome == FailOutcome.DeadLettered ? 1 : 0);
                     continue;
                 }
 
@@ -137,7 +156,9 @@ internal sealed partial class RelationalQueueAdapterReceiver(
                 return;
             }
 
-            await store.ConfirmAsync(queue, [.. receipts.Select(static r => new MessageReceipt(r.Key, r.Value))], cancellationToken).ConfigureAwait(false);
+            var confirmed = await observer.ObserveAsync("confirm", queue, () =>
+                store.ConfirmAsync(queue, [.. receipts.Select(static r => new MessageReceipt(r.Key, r.Value))], cancellationToken)).ConfigureAwait(false);
+            observer.Count("confirmed", confirmed);
             lock (pendingLock)
             {
                 foreach (var (messageId, receipt) in receipts)
@@ -163,6 +184,18 @@ internal sealed partial class RelationalQueueAdapterReceiver(
     /// receives them at once instead of after their visibility timeout.
     /// </summary>
     public async Task Shutdown(TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ReleaseHeldAsync(timeout, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            onShutdown?.Invoke(this);
+        }
+    }
+
+    private async Task ReleaseHeldAsync(TimeSpan timeout, CancellationToken cancellationToken)
     {
         try
         {
@@ -193,7 +226,9 @@ internal sealed partial class RelationalQueueAdapterReceiver(
 
         try
         {
-            await store.ReleaseAsync(queue, held, timeProvider.GetUtcNow(), cancellationToken).WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+            var released = await observer.ObserveAsync("release", queue, () =>
+                store.ReleaseAsync(queue, held, timeProvider.GetUtcNow(), cancellationToken)).WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+            observer.Count("released", released);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -231,8 +266,11 @@ internal sealed partial class RelationalQueueAdapterReceiver(
         {
             if (await store.TryClaimEvictionAsync(queue, now, now + options.EvictionInterval, cancellationToken).ConfigureAwait(false))
             {
-                var moved = await store.EvictAsync(queue, options.EvictionBatchSize, options.MaxAttempts, now, now + options.DeadLetterRetention, cancellationToken).ConfigureAwait(false);
-                var deleted = await store.EvictDeadLettersAsync(queue, options.EvictionBatchSize, now, cancellationToken).ConfigureAwait(false);
+                var (moved, deleted) = await observer.ObserveAsync("evict", queue, async () => (
+                    await store.EvictAsync(queue, options.EvictionBatchSize, options.MaxAttempts, now, now + options.DeadLetterRetention, cancellationToken).ConfigureAwait(false),
+                    await store.EvictDeadLettersAsync(queue, options.EvictionBatchSize, now, cancellationToken).ConfigureAwait(false))).ConfigureAwait(false);
+                observer.Count("dead_lettered", moved);
+                observer.Count("removed", deleted);
                 if (moved > 0 || deleted > 0)
                 {
                     LogEvicted(moved, deleted, queue);

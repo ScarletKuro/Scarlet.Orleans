@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Data;
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -170,6 +172,77 @@ public abstract class StreamReceiverTests(DatabaseFixture fixture) : IAsyncLifet
         Assert.Empty(await ReadAsync(receiver));
 
         Assert.Equal(1, await CountDeadLettersAsync());
+    }
+
+    [Fact]
+    public async Task Metrics_CountEachChange_AndReportHeldMessages()
+    {
+        var counts = new ConcurrentDictionary<string, long>();
+        var operations = new ConcurrentBag<string>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Meter.Name == "Scarlet.Orleans" && instrument.Name.StartsWith("scarlet.orleans.streaming.", StringComparison.Ordinal))
+            {
+                l.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+        {
+            if (Tag(tags, "orleans.stream.provider") == provider && instrument.Name == "scarlet.orleans.streaming.messages")
+            {
+                counts.AddOrUpdate(Tag(tags, "change")!, value, (_, sum) => sum + value);
+            }
+        });
+        listener.SetMeasurementEventCallback<double>((instrument, _, tags, _) =>
+        {
+            if (Tag(tags, "orleans.stream.provider") == provider && Tag(tags, "outcome") == "success")
+            {
+                operations.Add(Tag(tags, "orleans.stream.operation")!);
+            }
+        });
+        var held = 0;
+        listener.SetMeasurementEventCallback<int>((_, value, tags, _) =>
+        {
+            if (Tag(tags, "orleans.stream.provider") == provider)
+            {
+                held += value;
+            }
+        });
+        listener.Start();
+
+        var factory = CreateFactory();
+        var adapter = await factory.CreateAdapter(CancellationToken);
+        var receiver = adapter.CreateReceiver(SingleQueue(factory));
+        await EnqueueAsync(adapter, "a", "b");
+        var read = await ReadAsync(receiver);
+        listener.RecordObservableInstruments();
+        Assert.Equal(2, held);
+
+        await receiver.MessagesDeliveredAsync([read[0]], CancellationToken);
+        held = 0;
+        listener.RecordObservableInstruments();
+
+        Assert.Equal(1, held);
+        Assert.Equal(2, counts.GetValueOrDefault("enqueued"));
+        Assert.Equal(2, counts.GetValueOrDefault("dequeued"));
+        Assert.Equal(1, counts.GetValueOrDefault("confirmed"));
+        Assert.Contains("enqueue", operations);
+        Assert.Contains("dequeue", operations);
+        Assert.Contains("confirm", operations);
+
+        static string? Tag(ReadOnlySpan<KeyValuePair<string, object?>> tags, string name)
+        {
+            foreach (var tag in tags)
+            {
+                if (tag.Key == name)
+                {
+                    return tag.Value as string;
+                }
+            }
+
+            return null;
+        }
     }
 
     private async Task<(IQueueAdapter Adapter, IQueueAdapterReceiver Receiver)> CreateAsync()
