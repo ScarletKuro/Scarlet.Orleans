@@ -1,5 +1,8 @@
+using Microsoft.Extensions.DependencyInjection;
 using Orleans.Runtime;
+using Orleans.Streams;
 using Orleans.TestingHost;
+using Scarlet.Orleans.Streaming.AdoNet;
 
 namespace Scarlet.Orleans.Streaming.Tests;
 
@@ -111,10 +114,18 @@ public abstract class StreamingHandOverTests(DatabaseFixture fixture)
         fixture.Require();
         var database = await fixture.CreateDatabaseAsync();
         await using var cluster = await StreamingCluster.StartAsync(database, silos: 2, visibilityTimeout);
-        var streams = Enumerable.Range(0, 8).Select(_ => Guid.NewGuid()).ToArray();
+        var leaving = cluster.Silos[1];
+        var factory = (RelationalQueueAdapterFactory)leaving.ServiceProvider.GetRequiredKeyedService<IQueueAdapterFactory>(StreamNamespaces.Provider);
+        var owned = await WaitForAsync(() => factory.OwnedQueues, queues => queues.Count > 0, "The departing silo never took a queue.");
+
+        // Only streams the departing silo reads, so every message the test waits for was held there.
+        var mapper = factory.GetStreamQueueMapper();
+        var streams = Enumerable.Range(0, int.MaxValue).Select(_ => Guid.NewGuid())
+            .Where(stream => owned.Contains(mapper.GetQueueForStream(StreamId.Create(StreamNamespaces.Slow, stream))))
+            .Take(6)
+            .ToArray();
         int[] items = [.. Enumerable.Range(0, 60)];
         var provider = cluster.Client.GetStreamProvider(StreamNamespaces.Provider);
-
         await Task.WhenAll(streams.Select(async stream =>
         {
             var producer = provider.GetStream<int>(StreamId.Create(StreamNamespaces.Slow, stream));
@@ -123,16 +134,30 @@ public abstract class StreamingHandOverTests(DatabaseFixture fixture)
                 await producer.OnNextAsync(item);
             }
         }));
-        await Task.Delay(TimeSpan.FromMilliseconds(500), CancellationToken);
-        var deliveredBefore = streams.Sum(stream => DeliveryLog.Of(stream).Length);
-        await leave(cluster, cluster.Silos[1]);
 
-        Assert.True(deliveredBefore < streams.Length * items.Length, "Every message was delivered before the silo left, so nothing was handed over.");
+        await WaitForAsync(() => factory.HeldMessages, held => held > 0, "The departing silo never held a message.");
+        Assert.True(streams.Sum(stream => DeliveryLog.Of(stream).Length) < streams.Length * items.Length);
+        await leave(cluster, leaving);
 
         // Within 90 seconds: well inside the stopped silo's visibility timeout, and well past the killed one's.
         foreach (var stream in streams)
         {
             await DeliveryLog.WaitForAsync(stream, items, TimeSpan.FromSeconds(90), CancellationToken);
         }
+    }
+
+    private static async Task<T> WaitForAsync<T>(Func<T> read, Func<T, bool> done, string failure)
+    {
+        for (var waited = TimeSpan.Zero; waited < TimeSpan.FromSeconds(30); waited += TimeSpan.FromMilliseconds(20))
+        {
+            if (read() is var value && done(value))
+            {
+                return value;
+            }
+
+            await Task.Delay(20, CancellationToken);
+        }
+
+        throw new TimeoutException(failure);
     }
 }
