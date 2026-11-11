@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\Shared\Streaming.Shared.props" />
+
+  <PropertyGroup>
+    <Description>The Orleans streaming tables of Scarlet.Orleans.Streaming.AdoNet, mapped into an application's EF Core DbContext so its migrations own them. The queues run through Scarlet.Orleans.Streaming.AdoNet.</Description>
+    <PackageTags>orleans;streaming;streams;entityframeworkcore;efcore;sql</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(SharedSourceRoot)EntityFrameworkCore/**/*.cs" LinkBase="Shared/EntityFrameworkCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="System.IO.Hashing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Scarlet.Orleans.Streaming.EntityFrameworkCore.Tests" />
+  </ItemGroup>
+
+</Project>

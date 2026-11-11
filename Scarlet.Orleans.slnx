@@ -4,6 +4,7 @@
     <Project Path="bench/Scarlet.Orleans.GrainDirectory.Benchmarks/Scarlet.Orleans.GrainDirectory.Benchmarks.csproj" />
     <Project Path="bench/Scarlet.Orleans.Persistence.Benchmarks/Scarlet.Orleans.Persistence.Benchmarks.csproj" />
     <Project Path="bench/Scarlet.Orleans.Reminders.Benchmarks/Scarlet.Orleans.Reminders.Benchmarks.csproj" />
+    <Project Path="bench/Scarlet.Orleans.Streaming.Benchmarks/Scarlet.Orleans.Streaming.Benchmarks.csproj" />
     <Project Path="bench/Scarlet.Orleans.Transactions.Benchmarks/Scarlet.Orleans.Transactions.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/src/" />
@@ -25,6 +26,7 @@
   </Folder>
   <Folder Name="/src/Streaming/">
     <Project Path="src/Streaming/Scarlet.Orleans.Streaming.AdoNet/Scarlet.Orleans.Streaming.AdoNet.csproj" />
+    <Project Path="src/Streaming/Scarlet.Orleans.Streaming.EntityFrameworkCore/Scarlet.Orleans.Streaming.EntityFrameworkCore.csproj" />
   </Folder>
   <Folder Name="/src/Transactions/">
     <Project Path="src/Transactions/Scarlet.Orleans.Transactions.AdoNet/Scarlet.Orleans.Transactions.AdoNet.csproj" />

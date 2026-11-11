@@ -122,3 +122,15 @@ public sealed class MariaDbStreamingClusterTests(MariaDbStreamingClusterFixture 
 
 [Collection(MariaDbStreamingCluster.Name)]
 public sealed class MariaDbStreamingHandOverTests(MariaDbDatabaseFixture fixture) : StreamingHandOverTests(fixture);
+
+public sealed class SqliteStreamingModelTests(SqliteDatabaseFixture fixture) : StreamingModelTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlStreamingModelTests(PostgreSqlDatabaseFixture fixture) : StreamingModelTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerStreamingModelTests(SqlServerDatabaseFixture fixture) : StreamingModelTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlStreamingModelTests(MySqlDatabaseFixture fixture) : StreamingModelTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MySqlDataStreamingModelTests(MySqlDataDatabaseFixture fixture) : StreamingModelTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class MariaDbStreamingModelTests(MariaDbDatabaseFixture fixture) : StreamingModelTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
