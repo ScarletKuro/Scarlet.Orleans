@@ -805,7 +805,7 @@ The schemas differ (GUID ETags, hash keys, snake case, no `OrleansQuery`), so th
 2. **Persistence and clustering** on ADO.NET (PostgreSQL, SQL Server, MySQL, MariaDB, SQLite). These are the most used components and the easiest to verify.
 3. **Reminders and grain directory** on ADO.NET, including the directory chaos test on every engine.
 4. **Transactions** on ADO.NET and EF Core, after measuring the wrapper path over persistence that works without them (section 5.5).
-5. **Streaming** on ADO.NET, with the receiver rules from section 5.6 and the end-to-end cluster tests.
+5. **Streaming** on ADO.NET, with the receiver rules from section 5.6 and the end-to-end cluster tests. Built, with its EF Core table mapping; open before a preview: its metrics, SQL Server delivery latency on a dedicated server (bench/results/2026-11-12), and a soak run.
 6. **EF Core flavour** for all components over the same schema, with the schema-equality test.
 7. **The import tool**, and benchmarks against the in-box providers, including NativeAOT startup time and memory.
 8. First preview release.

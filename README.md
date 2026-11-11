@@ -2,7 +2,7 @@
 
 Relational storage providers for [Microsoft Orleans](https://github.com/dotnet/orleans) 10, in two flavours over one
 schema: plain **ADO.NET** (NativeAOT compatible) and **EF Core**. Clustering, persistence, reminders, the grain
-directory and transactions are available today; streaming is planned ([design](community-relational-providers-design.md)).
+directory and transactions are available today, and streaming is in development ([design](community-relational-providers-design.md)).
 
 > **Status: preview.** The packages are tested against every supported engine in CI, including real connection failures
 > and the Orleans clustering, persistence, reminders and transactions TestKits, but have no production deployments yet. Try them where a lost
@@ -20,6 +20,8 @@ directory and transactions are available today; streaming is planned ([design](c
 | [`Scarlet.Orleans.GrainDirectory.EntityFrameworkCore`](src/GrainDirectory/Scarlet.Orleans.GrainDirectory.EntityFrameworkCore/README.md) | A grain directory over EF Core, in your own `DbContext` and migrations. |
 | [`Scarlet.Orleans.Transactions.AdoNet`](src/Transactions/Scarlet.Orleans.Transactions.AdoNet/README.md) | Transactional state storage over ADO.NET. NativeAOT compatible. |
 | [`Scarlet.Orleans.Transactions.EntityFrameworkCore`](src/Transactions/Scarlet.Orleans.Transactions.EntityFrameworkCore/README.md) | Transactional state storage over EF Core, in your own `DbContext` and migrations. |
+| [`Scarlet.Orleans.Streaming.AdoNet`](src/Streaming/Scarlet.Orleans.Streaming.AdoNet/README.md) | **In development.** Persistent streams over ADO.NET. NativeAOT compatible. |
+| [`Scarlet.Orleans.Streaming.EntityFrameworkCore`](src/Streaming/Scarlet.Orleans.Streaming.EntityFrameworkCore/README.md) | **In development.** The streaming tables in your own `DbContext` and migrations; the queues run through the ADO.NET package. |
 
 All require .NET 10 and Orleans 10.4 or later. Each package's README covers its setup, schema and options. The two
 flavours of a component use the same tables, so either can use a database created by the other, and all components can
