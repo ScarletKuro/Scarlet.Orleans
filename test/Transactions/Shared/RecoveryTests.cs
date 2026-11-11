@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Orleans.Hosting;
+using Orleans.Serialization;
 using Orleans.TestingHost;
 using Orleans.Transactions.TestKit;
 using Orleans.Transactions.TestKit.xUnit;
@@ -102,6 +103,7 @@ public abstract class RecoveryTests(DatabaseFixture fixture, ITestOutputHelper o
             siloBuilder.Services.AddKeyedSingleton<IRemoteCommitService, RemoteCommitService>(TransactionTestConstants.RemoteCommitService);
             FlavourTransactions.AddStorage(siloBuilder, TransactionTestConstants.TransactionStore, database);
             siloBuilder.UseTransactions();
+            siloBuilder.Services.Configure<ExceptionSerializationOptions>(TransactionsClusterFixture.SerializeDriverExceptions);
             siloBuilder.UseScarletAdoNetClustering(options =>
             {
                 options.DataSource = database.DataSource;
@@ -114,6 +116,7 @@ public abstract class RecoveryTests(DatabaseFixture fixture, ITestOutputHelper o
         {
             var database = Databases[configuration[DatabaseKey]!];
             clientBuilder.UseTransactions();
+            clientBuilder.Services.Configure<ExceptionSerializationOptions>(TransactionsClusterFixture.SerializeDriverExceptions);
             clientBuilder.UseScarletAdoNetClustering(options =>
             {
                 options.DataSource = database.DataSource;

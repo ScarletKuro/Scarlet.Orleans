@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Orleans;
 using Orleans.Hosting;
+using Orleans.Serialization;
 using Orleans.TestingHost;
 using Orleans.Transactions.TestKit;
 
@@ -49,12 +50,17 @@ public abstract class TransactionsClusterFixture(DatabaseFixture database, bool 
             silo.Services.AddKeyedSingleton<IRemoteCommitService, RemoteCommitService>(TransactionTestConstants.RemoteCommitService);
             ConfigureStorage(silo, TransactionTestConstants.TransactionStore);
             silo.UseTransactions();
+            silo.Services.Configure<ExceptionSerializationOptions>(SerializeDriverExceptions);
             if (skewedClock)
             {
                 new SkewedClockConfigurator().Configure(silo);
             }
         });
-        builder.ConfigureClient(client => client.UseTransactions());
+        builder.ConfigureClient(client =>
+        {
+            client.UseTransactions();
+            client.Services.Configure<ExceptionSerializationOptions>(SerializeDriverExceptions);
+        });
         cluster = builder.Build();
         await cluster.DeployAsync();
     }
@@ -63,6 +69,17 @@ public abstract class TransactionsClusterFixture(DatabaseFixture database, bool 
     /// Registers the storage of transactional state under <paramref name="name"/>: the storage under test.
     /// </summary>
     protected virtual void ConfigureStorage(ISiloBuilder silo, string name) => FlavourTransactions.AddStorage(silo, name, Database.Database);
+
+    /// <summary>
+    /// Lets a storage error reach the test as itself: Orleans serializes only exceptions from allowed namespaces, and
+    /// without the drivers' a failed store shows up as a missing codec instead of its error.
+    /// </summary>
+    internal static void SerializeDriverExceptions(ExceptionSerializationOptions options)
+    {
+        // MySql.Data and MySqlConnector.
+        options.SupportedNamespacePrefixes.Add("MySql");
+        options.SupportedNamespacePrefixes.Add("Npgsql");
+    }
 
     public async ValueTask DisposeAsync()
     {
