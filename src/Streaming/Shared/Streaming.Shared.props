@@ -1,0 +1,7 @@
+<Project>
+  <!-- Linked into both streaming packages, so both share the queue key and schema constants. The SQL scripts in Schema/
+       ship with the ADO.NET flavour, which runs the queues; the EF Core flavour maps the same tables (design section 5.6). -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)*.cs" LinkBase="Streaming" />
+  </ItemGroup>
+</Project>

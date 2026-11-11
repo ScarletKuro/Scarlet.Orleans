@@ -537,6 +537,8 @@ These facts, read from the Orleans 10.4 source, shape the rules below.
 - `orleans_stream_dead_letter`: the same columns plus `dead_on` and `remove_on`.
 - `orleans_stream_queue`: one row per queue, with the full service ID, provider name and queue ID behind its hash, verified when a receiver starts, and `evict_on` for scheduling eviction. Message rows carry only the hash, since a queue's rows are only ever read through its receiver.
 
+The times that queries compare, `visible_on`, `expires_on`, `remove_on` and `evict_on`, are `bigint` UTC ticks rather than the timestamps of section 4.5: streaming is the one component whose queries compare times, and ticks compare exactly on every engine and driver, where SQLite would compare the driver's text form of a timestamp. `created_on` and `dead_on`, which only people read, stay timestamps. A receipt is a message ID with a dequeue count, so message IDs are never reused: SQLite's ID column is `AUTOINCREMENT`, without which it reuses the ID of a deleted last row.
+
 Message IDs come from one identity column, not a sequence per queue (section 12, question 5): the receiver's positions, not the IDs, order the cache, so IDs need not commit in allocation order. That removes what the in-box provider needed for it, a per-queue application lock on SQL Server and a single-row sequence table on MySQL that serialized every enqueue.
 
 **Store operations** (each atomic)
@@ -545,7 +547,7 @@ Message IDs come from one identity column, not a sequence per queue (section 12,
 |---|---|
 | `Enqueue(key)` | Insert a message visible now, expiring at `now + expiry`. A unique-key violation on `message_key` means an earlier attempt of the same call committed, and is reported as success (section 4.7). Deduplication lasts only while the message row exists: if the first attempt was already consumed and confirmed, a retry inserts it again, with a new `message_id` but the same `message_key`. |
 | `Dequeue(max, maxAttempts, visibility)` | Select up to `max` visible, unexpired messages with `dequeued < maxAttempts`, in `message_id` order, skipping locked rows. Increment `dequeued`, set `visible_on = now + visibility`, return them **ordered by `message_id`**. |
-| `Confirm(receipts)` | Delete each message whose `dequeued` equals its receipt. Return the IDs actually deleted. |
+| `Confirm(receipts)` | Delete each message whose `dequeued` equals its receipt. Return how many it deleted. |
 | `Release(receipts)` | Make each message whose receipt matches visible now. |
 | `Fail(receipt, maxAttempts, removal)` | If the message's `dequeued` still equals the receipt, make it visible again, or move it to dead letters if attempts are exhausted. A stale receipt changes nothing. |
 | `Evict(batch, maxAttempts, removal)` | Move up to `batch` messages that are expired, or exhausted and no longer visible, to dead letters. |

@@ -23,6 +23,9 @@
     <Project Path="src/Reminders/Scarlet.Orleans.Reminders.AdoNet/Scarlet.Orleans.Reminders.AdoNet.csproj" />
     <Project Path="src/Reminders/Scarlet.Orleans.Reminders.EntityFrameworkCore/Scarlet.Orleans.Reminders.EntityFrameworkCore.csproj" />
   </Folder>
+  <Folder Name="/src/Streaming/">
+    <Project Path="src/Streaming/Scarlet.Orleans.Streaming.AdoNet/Scarlet.Orleans.Streaming.AdoNet.csproj" />
+  </Folder>
   <Folder Name="/src/Transactions/">
     <Project Path="src/Transactions/Scarlet.Orleans.Transactions.AdoNet/Scarlet.Orleans.Transactions.AdoNet.csproj" />
     <Project Path="src/Transactions/Scarlet.Orleans.Transactions.EntityFrameworkCore/Scarlet.Orleans.Transactions.EntityFrameworkCore.csproj" />
@@ -51,6 +54,9 @@
     <Project Path="test/Reminders/Scarlet.Orleans.Reminders.AdoNet.NativeAotTests/Scarlet.Orleans.Reminders.AdoNet.NativeAotTests.csproj" />
     <Project Path="test/Reminders/Scarlet.Orleans.Reminders.AdoNet.Tests/Scarlet.Orleans.Reminders.AdoNet.Tests.csproj" />
     <Project Path="test/Reminders/Scarlet.Orleans.Reminders.EntityFrameworkCore.Tests/Scarlet.Orleans.Reminders.EntityFrameworkCore.Tests.csproj" />
+  </Folder>
+  <Folder Name="/test/Streaming/">
+    <Project Path="test/Streaming/Scarlet.Orleans.Streaming.AdoNet.Tests/Scarlet.Orleans.Streaming.AdoNet.Tests.csproj" />
   </Folder>
   <Folder Name="/test/Transactions/">
     <Project Path="test/Transactions/Scarlet.Orleans.Transactions.AdoNet.NativeAotTests/Scarlet.Orleans.Transactions.AdoNet.NativeAotTests.csproj" />
