@@ -67,7 +67,7 @@ Component logic        src/{Component}/Shared: linked into both packages of the 
                        - component rules: membership versions, first-writer-wins registration,
                          state ETag checks, reminder ranges, transactional store order, streaming receiver (positions,
                          receipts, confirmation coalescing), batch container, failure handler
-                       - raw SQL that both flavours run (section 7.1)
+                       - for streaming, the EF package maps the tables only (section 7.1)
                                    │
 Store contracts        IMembershipStore  IGrainDirectoryStore  IGrainStateStore
 (narrow, internal)     IReminderStore    ITransactionalStateStore  IStreamQueueStore
@@ -111,7 +111,7 @@ Rules that keep linked source manageable:
 - **Shared infrastructure is cross-cutting only.** Keys, ETags, error classification, retries, schema versioning and migrations, time and diagnostics. It contains no component types.
 - **Each component owns its semantics, once.** The component's linked logic implements its Orleans interface and its rules. Both of the component's packages compile that same code, and add only their store.
 - **Store contracts are narrow, atomic and internal.** Each method is one atomic database operation with a precisely specified outcome, for example `TryInsertMemberAsync(member, expectedVersion) → Inserted | VersionConflict | AlreadyExists`. The atomicity guarantee is part of the contract and is verified by the store conformance suite (section 9).
-- **Backends own execution.** ADO.NET backends hold SQL per dialect. The EF backend uses the EF model and EF's set-based operations, plus the component's shared raw SQL where EF cannot express an operation (section 7.1). Neither contains Orleans logic.
+- **Backends own execution.** ADO.NET backends hold SQL per dialect. The EF backend uses the EF model and EF's set-based operations; a component whose operations EF cannot express has no EF store (section 7.1). Neither contains Orleans logic.
 
 ### 3.3 Why this split
 
@@ -128,7 +128,7 @@ Packages are split **by component and flavour**, like the in-box Orleans provide
 **Why not by database.** Each package contains every supported engine:
 
 - **ADO.NET:** the dialects are SQL text plus error mapping, with no reference to any driver. The user supplies the driver through the `DbDataSource` they pass in, which the AOT design already requires (section 4.11).
-- **EF Core:** the packages ship the model only, configured with provider-neutral APIs so that every provider generates the same tables, and no EF provider package is referenced. A component uses EF Core APIs for everything EF Core can express, and knows the engine only if it has raw statements that need engine-specific syntax (section 7.1). Persistence has none, so it works with any relational EF Core provider; the tested ones are SQL Server, Npgsql, SQLite and, for MySQL, Microting (`Microting.EntityFrameworkCore.MySql`, the maintained fork of Pomelo, over MySqlConnector) and Oracle's `MySql.EntityFrameworkCore` (over MySql.Data). The ADO.NET flavour likewise accepts both MySqlConnector and MySql.Data. The application's own EF migrations create the Orleans tables, after `ApplyOrleansModel()` adds them to its model. No generated EF migrations are shipped. A per-engine EF extension package is added only if a future feature genuinely needs a provider-specific API.
+- **EF Core:** the packages ship the model only, configured with provider-neutral APIs so that every provider generates the same tables, and no EF provider package is referenced. A component uses EF Core APIs for everything EF Core can express, and never needs engine-specific syntax (section 7.1). Persistence has none, so it works with any relational EF Core provider; the tested ones are SQL Server, Npgsql, SQLite and, for MySQL, Microting (`Microting.EntityFrameworkCore.MySql`, the maintained fork of Pomelo, over MySqlConnector) and Oracle's `MySql.EntityFrameworkCore` (over MySql.Data). The ADO.NET flavour likewise accepts both MySqlConnector and MySql.Data. The application's own EF migrations create the Orleans tables, after `ApplyOrleansModel()` adds them to its model. No generated EF migrations are shipped. A per-engine EF extension package is added only if a future feature genuinely needs a provider-specific API.
 
 | Package | Contents | Orleans dependencies | NativeAOT |
 |---|---|---|---|
@@ -145,7 +145,7 @@ Packages are split **by component and flavour**, like the in-box Orleans provide
 | `Scarlet.Orleans.Persistence.EntityFrameworkCore` | Persistence EF model and store | Orleans runtime, EF Core | No |
 | `Scarlet.Orleans.Reminders.EntityFrameworkCore` | Reminders EF model and store | Orleans reminders, EF Core | No |
 | `Scarlet.Orleans.Transactions.EntityFrameworkCore` | Transactional state EF model and store | Orleans transactions, EF Core | No |
-| `Scarlet.Orleans.Streaming.EntityFrameworkCore` | Streaming EF model and store, running the shared raw SQL for dequeue and eviction | Orleans streaming, EF Core | No |
+| `Scarlet.Orleans.Streaming.EntityFrameworkCore` | The streaming tables mapped into an application's `DbContext`, for its migrations; the queues run through `Scarlet.Orleans.Streaming.AdoNet` (section 5.6) | EF Core | No |
 | **Tools** | | | |
 | `Scarlet.Orleans.Relational.Tool` | .NET tool `orleans-db`: `migrate`, `status`, `script` (section 8.1) and `import` from the in-box Orleans tables (section 11) | The ADO.NET packages | Not applicable |
 
@@ -519,11 +519,25 @@ All of the above is in place, with these specifics:
 
 This is the component with the most logic, and where the in-box provider had the most bugs. The component logic (linked into both streaming packages) holds all the queue semantics; the backend only implements atomic queue operations.
 
+**What Orleans 10.4 requires of a queue provider**
+
+These facts, read from the Orleans 10.4 source, shape the rules below.
+
+- The pulling agent calls the `CancellationToken` overloads of `IQueueAdapterReceiver`; the older overloads are obsolete but still abstract, so the receiver implements both, the old ones forwarding.
+- `Initialize` is started without being awaited, and a failure is only logged: the receiver must retry its own initialization on the next read.
+- Before each read the agent purges the cache and passes the purged messages to `MessagesDeliveredAsync`. If that throws, the agent logs it and the messages are never offered again, so an unconfirmed message is redelivered only when its visibility timeout ends.
+- Messages whose delivery failed are left out of the purge, so they are never confirmed; the failure handler or the visibility timeout must settle them.
+- On shutdown, and when a rebalance moves the queue to another silo, the agent calls `Shutdown` without confirming what is still cached. The new owner may dequeue the same rows at once, which is why every operation carries a receipt, and why the receiver releases what it holds.
+- `SimpleQueueCache` adds batches in arrival order without checking them, and places cursors by comparing tokens, so tokens must strictly increase across reads. The failure handler receives that cache token, not a database ID.
+- Orleans ships no streaming TestKit, and its streaming test runners are not packaged; the test projects vendor the runners' source from the Orleans release we test against, as the benchmarks vendor the in-box scripts.
+
 **Tables**
 
-- `orleans_stream_message`: `service_id`, `provider_id`, `queue_id`, `message_id` (`bigint`, from a sequence or identity), `message_key` (a client-generated GUID, unique, for idempotent enqueue), `dequeued`, `visible_on`, `expires_on`, `created_on`, `modified_on`, `payload`.
+- `orleans_stream_message`: `queue_hash` (the 128-bit hash of service ID, provider name and queue ID, section 4.3), `message_id` (`bigint`, one identity or auto-increment column for the table), `message_key` (a client-generated GUID, unique, for idempotent enqueue), `dequeued`, `visible_on`, `expires_on`, `created_on`, `payload`. The primary key is `(queue_hash, message_id)`, which is also the dequeue order.
 - `orleans_stream_dead_letter`: the same columns plus `dead_on` and `remove_on`.
-- `orleans_stream_control`: per queue `evict_on`, for scheduling eviction.
+- `orleans_stream_queue`: one row per queue, with the full service ID, provider name and queue ID behind its hash, verified when a receiver starts, and `evict_on` for scheduling eviction. Message rows carry only the hash, since a queue's rows are only ever read through its receiver.
+
+Message IDs come from one identity column, not a sequence per queue (section 12, question 5): the receiver's positions, not the IDs, order the cache, so IDs need not commit in allocation order. That removes what the in-box provider needed for it, a per-queue application lock on SQL Server and a single-row sequence table on MySQL that serialized every enqueue.
 
 **Store operations** (each atomic)
 
@@ -545,12 +559,14 @@ This is the component with the most logic, and where the in-box provider had the
   |---|---|
   | PostgreSQL | One statement: `UPDATE … FROM (SELECT … ORDER BY message_id LIMIT @max FOR UPDATE SKIP LOCKED) … RETURNING …`. |
   | SQL Server | One statement: `UPDATE TOP (@max) … WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK) … OUTPUT inserted.…`, selecting through an ordered CTE, in a session explicitly at `READ COMMITTED`. `READPAST` is rejected under `READ_COMMITTED_SNAPSHOT` unless the query also has `READCOMMITTEDLOCK`, and it is only allowed at `READ COMMITTED` or `REPEATABLE READ`. `READCOMMITTEDLOCK` is in the same hint group as `ROWLOCK`, so `ROWLOCK` is dropped; `READPAST` already skips row locks. With RCSI off, `READCOMMITTEDLOCK` is what `READ COMMITTED` does anyway, so this one hint set is valid in both configurations. |
-  | MySQL, MariaDB | One transaction, two statements: `SELECT message_id … ORDER BY message_id LIMIT @max FOR UPDATE SKIP LOCKED`, then `UPDATE … WHERE message_id IN (…)` with the IDs just read, then `COMMIT`. The rows stay locked between the two statements, so the pair is atomic. |
-  | SQLite | `BEGIN IMMEDIATE`, then the select and update. SQLite has a single writer, so there is nothing to skip; the immediate transaction serialises dequeuers. |
+  | MySQL, MariaDB | Two commands, two round trips, as in the MySQL transactions store (section 5.5): the first starts a read-committed transaction and runs `SELECT message_id … ORDER BY message_id LIMIT @max FOR UPDATE SKIP LOCKED`; the second runs `UPDATE … WHERE message_id IN (…)` with the IDs just read, as parameters, and `COMMIT`. The rows stay locked between them, so the pair is atomic. The transaction is started in SQL, so a dequeue that does not commit rolls back explicitly. |
+  | SQLite | One statement, `UPDATE … WHERE message_id IN (SELECT … ORDER BY message_id LIMIT @max) RETURNING …`. SQLite has a single writer, so there is nothing to skip. |
 
-  Each shape is verified by the same concurrent-dequeuer conformance test. **No temporary tables built with `CREATE … SELECT … FOR UPDATE`.**
+  Each shape is verified by the same concurrent-dequeuer conformance test. **No temporary tables built with `CREATE … SELECT … FOR UPDATE`.** Read committed throughout, so MySQL takes no gap locks that would block the neighbouring queues (section 5.2).
 - Result order is never assumed from `OUTPUT` or `RETURNING`. The component logic sorts by `message_id`.
-- Eviction runs on a schedule owned by `orleans_stream_control`. Exactly one silo wins each slot with a conditional update of `evict_on`, and the parameters are passed by name.
+- Lists of message IDs and receipts are parameters, never literals, so SQL Server reuses its plans (section 5.5), and are sent in chunks under each engine's parameter limit.
+- MySQL requires an auto-increment column to lead an index, so `message_id` has its own index besides the primary key.
+- Eviction runs on a schedule kept in `orleans_stream_queue`: when a receiver finds its queue's `evict_on` due, it moves the slot forward with a conditional update, and only the receiver whose update wins evicts. The parameters are passed by name.
 
 **Core rules** (the lessons from the in-box receiver)
 
@@ -560,6 +576,8 @@ This is the component with the most logic, and where the in-box provider had the
 - **Position to message mapping.** The failure handler resolves a position to its message ID. Positions that no longer resolve (released, redelivered, expired) are skipped, never mapped to an unrelated row.
 - **Release on shutdown.** On shutdown the receiver releases every pending message it holds, so the next owner picks them up immediately instead of waiting for the visibility timeout.
 - **Cache contract.** The component logic documents that its batches are ordered by position, which is what `SimpleQueueCache` requires.
+- **Initialization retried.** Orleans does not await the receiver's initialization, so a receiver that failed to initialize, for example while the database was unreachable, initializes again on its next read instead of reading.
+- **Visibility outlasts the cache.** A message stays in the cache until its bucket is purged, which waits for every cursor to leave it, so a slow consumer can hold it past the visibility timeout and it is dequeued again. Receipts keep that safe, and the duplicate is within at-least-once; the default visibility timeout is chosen long enough that this is rare under the default cache size, and the end-to-end tests measure it. Leases are not renewed.
 
 **Delivery semantics**
 
@@ -574,7 +592,7 @@ At-least-once. Consumers must tolerate duplicates, from redelivery and from an e
 
 **EF flavour note**
 
-EF Core cannot express row locks or skip-locked reads, and the main EF providers (Npgsql, Pomelo, SqlClient) do not add them. So `Dequeue` and the eviction operations cannot be generated by EF, and the EF streaming store runs the same per-engine statements as the ADO.NET store, on the context's connection and transaction. The rules for this raw SQL are in section 7.1.
+EF Core cannot express row locks or skip-locked reads, and the main EF providers (Npgsql, Pomelo, SqlClient) do not add them, so `Dequeue` and eviction cannot be generated by EF; an EF streaming store could only run the ADO.NET store's per-engine SQL on the context's connection. So there is no EF streaming store. `Scarlet.Orleans.Streaming.EntityFrameworkCore` only maps the streaming tables into the application's `DbContext`, so its migrations own the schema, and `Scarlet.Orleans.Streaming.AdoNet` runs the queues on the same database. This follows the rule adopted for transactions, that the EF flavour holds no engine-specific SQL, and loses no portability: dequeuing needs an engine-specific locking read whichever package runs it.
 
 ---
 
@@ -599,14 +617,14 @@ EF Core cannot express row locks or skip-locked reads, and the main EF providers
 
 ### 7.1 Raw SQL in the EF flavour
 
-EF translation is used wherever it can express an operation, because EF and its providers keep the generated SQL correct across database releases. Only operations that EF cannot express drop down to raw SQL: streaming `Dequeue` and eviction, which need a skip-locked locking read inside an update. Clustering needs none: its snapshot read is a `REPEATABLE READ` transaction, which EF expresses (section 5.1). Working around a provider's error reporting is not a reason for raw SQL: persistence once used a raw insert for that, and replaced it with an existence check (section 7). Only a component with raw statements needs to know the engine. For those statements:
+The EF flavour uses only what EF translates, because EF and its providers keep the generated SQL correct across database releases, and an EF store that needs engine-specific SQL is not built. Clustering needs none: its snapshot read is a `REPEATABLE READ` transaction, which EF expresses (section 5.1). Working around a provider's error reporting is not a reason for raw SQL: persistence once used a raw insert for that, and replaced it with an existence check (section 7). Where an operation needs SQL EF cannot express, the EF package maps the tables only and the ADO.NET package runs the operations: streaming, whose dequeue needs a skip-locked locking read inside an update (section 5.6). Transactions stay pure EF and accept being slower than the ADO.NET flavour, which batches per engine (section 5.5).
 
-- **One copy of the SQL.** The statements live in the component's linked source (`src/Streaming/Shared`, section 3.1), which is compiled into both `Scarlet.Orleans.Streaming.AdoNet` and `Scarlet.Orleans.Streaming.EntityFrameworkCore`. Neither package references the other, and both execute the same text. When a database release breaks a statement, CI catches it through either flavour, and one fix repairs both. Separate copies per flavour would drift apart, as the in-box scripts did.
-- **Only documented, standard constructs**, in the per-engine shapes listed in section 5.6 (for example `FOR UPDATE SKIP LOCKED` in a select whose IDs a second statement updates, inside one transaction, on MySQL). No behaviour that merely happens to work on one engine version. The MySQL 8.4 breakages (`ROW_COUNT()` inside a `WHERE` clause, `CREATE TEMPORARY TABLE … SELECT … FOR UPDATE`) were exactly that kind of trick.
-- **As few statements as possible.** Everything EF can generate, it generates. The raw set is listed in one place and reviewed as a unit.
-- **New database releases join the CI matrix early** (section 9.3), so a release that breaks a raw statement is found before users upgrade, not after.
+The rules for the ADO.NET flavour's per-engine SQL:
 
-EF translation is not immune to upgrades either: provider bugs and translation changes between EF versions happen, and EF upgrades follow .NET releases. The CI matrix covers both paths.
+- **Only documented, standard constructs**, in the per-engine shapes listed in sections 5.5 and 5.6 (for example `FOR UPDATE SKIP LOCKED` in a select whose IDs a second command updates, inside one transaction, on MySQL). No behaviour that merely happens to work on one engine version. The MySQL 8.4 breakages (`ROW_COUNT()` inside a `WHERE` clause, `CREATE TEMPORARY TABLE … SELECT … FOR UPDATE`) were exactly that kind of trick.
+- **New database releases join the CI matrix early** (section 9.3), so a release that breaks a statement is found before users upgrade, not after.
+
+EF translation is not immune to upgrades either: provider bugs and translation changes between EF versions happen, and EF upgrades follow .NET releases. The CI matrix covers both flavours.
 
 ---
 
@@ -772,7 +790,7 @@ The schemas differ (GUID ETags, hash keys, snake case, no `OrleansQuery`), so th
 2. **Membership version type.** Keep `int` as Orleans defines it, or store `bigint` and narrow at the boundary for headroom.
 3. **JSON columns.** Worth supporting at all, given the schema-option complexity, or leave JSON readability to `content_type` plus a view?
 4. **Oracle.** Ship at all without a maintainer and a CI image?
-5. **Stream message IDs.** Per-queue sequences or one global sequence. Global is simpler; per queue avoids a hot sequence under very high enqueue rates.
+5. **Stream message IDs.** Settled: one identity column (section 5.6). Positions order the cache, so IDs need no per-queue order, and an identity column is not a hot row the way a sequence table is.
 6. **Default schema mode.** `Validate` is the safe default (section 8.1). Should development environments default to `Apply`, for example when `IHostEnvironment.IsDevelopment()`?
 7. **Transactional metadata format.** Storing the commit records with the Orleans serializer keeps NativeAOT and grain references simple, but makes them opaque in the database. Is a readable form worth a reflection-free JSON contract for `ParticipantId`?
 8. **Upstreaming.** If this proves itself, which parts are worth proposing to dotnet/orleans: GUID ETags, the store conformance kit, the streaming receiver rules?
