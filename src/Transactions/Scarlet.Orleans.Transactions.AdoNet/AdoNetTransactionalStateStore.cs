@@ -413,7 +413,7 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
             {
                 if (!committed)
                 {
-                    await MySqlTransactionsBatch.RollbackAsync(connection).ConfigureAwait(false);
+                    await SqlTransactions.RollbackAsync(connection).ConfigureAwait(false);
                 }
             }
         }, cancellationToken);

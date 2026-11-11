@@ -147,23 +147,4 @@ internal static class MySqlTransactionsBatch
         await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
         return row;
     }
-
-    public static async Task RollbackAsync(DbConnection connection)
-    {
-        if (connection.State != ConnectionState.Open)
-        {
-            return;
-        }
-
-        await using var rollback = connection.CreateCommand();
-        rollback.CommandText = "ROLLBACK";
-        try
-        {
-            await rollback.ExecuteNonQueryAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (DbException)
-        {
-            // A broken connection; the server rolls back when the session ends.
-        }
-    }
 }
