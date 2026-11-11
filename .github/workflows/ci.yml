@@ -219,6 +219,7 @@ jobs:
           dotnet publish test/GrainDirectory/Scarlet.Orleans.GrainDirectory.AdoNet.NativeAotTests -c $CONFIGURATION -r linux-x64 -o artifacts/aot-tests/grain-directory
           dotnet publish test/Clustering/Scarlet.Orleans.Clustering.AdoNet.NativeAotTests -c $CONFIGURATION -r linux-x64 -o artifacts/aot-tests/clustering
           dotnet publish test/Transactions/Scarlet.Orleans.Transactions.AdoNet.NativeAotTests -c $CONFIGURATION -r linux-x64 -o artifacts/aot-tests/transactions
+          dotnet publish test/Streaming/Scarlet.Orleans.Streaming.AdoNet.NativeAotTests -c $CONFIGURATION -r linux-x64 -o artifacts/aot-tests/streaming
       - name: Wait for SQL Server
         run: timeout 120 bash -c 'until docker logs "${{ job.services.sqlserver.id }}" 2>&1 | grep -q "SQL Server is now ready for client connections"; do sleep 2; done'
       - name: Run persistence
@@ -231,3 +232,5 @@ jobs:
         run: ./artifacts/aot-tests/clustering/Scarlet.Orleans.Clustering.AdoNet.NativeAotTests
       - name: Run transactions
         run: ./artifacts/aot-tests/transactions/Scarlet.Orleans.Transactions.AdoNet.NativeAotTests
+      - name: Run streaming
+        run: ./artifacts/aot-tests/streaming/Scarlet.Orleans.Streaming.AdoNet.NativeAotTests

@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Scarlet.Orleans.Streaming.AdoNet.Tests" />
+    <InternalsVisibleTo Include="Scarlet.Orleans.Streaming.AdoNet.NativeAotTests" />
   </ItemGroup>
 
 </Project>
