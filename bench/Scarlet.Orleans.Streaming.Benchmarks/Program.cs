@@ -27,10 +27,10 @@ var failures = new List<string>();
 var report = new StringBuilder()
     .AppendLine(CultureInfo.InvariantCulture, $"# Streaming benchmarks, {DateTimeOffset.UtcNow:yyyy-MM-dd}")
     .AppendLine()
-    .AppendLine(CultureInfo.InvariantCulture, $"{Environment.ProcessorCount} logical processors, .NET {Environment.Version}, {Bench.QueueCount} queues per provider. Enqueue: {Bench.Sequential} events sent one at a time from a client. Delivery: {Bench.Producers} client producers, each sending to its own stream for {Bench.Duration.TotalSeconds:0} s as fast as they can, read by one implicitly subscribed consumer grain per stream; throughput counts deliveries over the time from the first send to the last delivery, and latency runs from send to consumer. Faster enqueues mean more load, so the paced run sends one event every {Bench.PacedInterval.TotalMilliseconds:0} ms per producer ({Bench.Producers * 1000 / (int)Bench.PacedInterval.TotalMilliseconds} events per second), and compares latency at the same load. Latencies in milliseconds. Every event must be delivered within {Bench.DrainTimeout.TotalSeconds:0} s of the last send, or the run is incomplete; deliveries beyond the events sent are duplicates.")
+    .AppendLine(CultureInfo.InvariantCulture, $"{Environment.ProcessorCount} logical processors, .NET {Environment.Version}, {Bench.QueueCount} queues per provider. Enqueue: {Bench.Sequential} events sent one at a time from a client. Delivery: {Bench.Producers} client producers, each sending to its own stream for {Bench.Duration.TotalSeconds:0} s as fast as they can, read by one implicitly subscribed consumer grain per stream; throughput counts deliveries over the time from the first send to the last delivery, and latency runs from send to consumer. Faster enqueues mean more load, so the paced run offers one event every {Bench.PacedInterval.TotalMilliseconds:0} ms per producer ({Bench.Producers * 1000 / (int)Bench.PacedInterval.TotalMilliseconds} events per second), sending without waiting for earlier sends, and compares latency at that load; its sent rate shows whether the provider took it. Each event is counted once; further deliveries of it are duplicates. Latencies in milliseconds. Every event must be delivered within {Bench.DrainTimeout.TotalSeconds:0} s of the last send, or the run is incomplete; deliveries beyond the events sent are duplicates.")
     .AppendLine()
-    .AppendLine("| Engine | Provider | Enqueue p50 | Enqueue p99 | Sent | Delivered/s | Delivery p50 | Delivery p99 | Paced p50 | Paced p99 | Duplicates |")
-    .AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+    .AppendLine("| Engine | Provider | Enqueue p50 | Enqueue p99 | Sent | Delivered/s | Delivery p50 | Delivery p99 | Paced sent/s | Paced p50 | Paced p99 | Duplicates |")
+    .AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
 try
 {
     foreach (var engine in engines)
@@ -44,7 +44,7 @@ try
         {
             // The in-box scripts cannot be installed on this engine, so the in-box provider is not measured here.
             failures.Add($"- {engine.Name} / {Engine.InBox}: its schema scripts failed to install: {exception.GetType().Name}: {exception.Message.Split('\n')[0]}");
-            report.AppendLine(CultureInfo.InvariantCulture, $"| {engine.Name} | {Engine.InBox} | failed, see below |  |  |  |  |  |  |  |  |");
+            report.AppendLine(CultureInfo.InvariantCulture, $"| {engine.Name} | {Engine.InBox} | failed, see below |  |  |  |  |  |  |  |  |  |");
             providers = [Providers.Scarlet];
         }
 
@@ -58,12 +58,12 @@ try
             {
                 var result = await Bench.RunAsync(cluster.Client, provider);
                 report.AppendLine(CultureInfo.InvariantCulture,
-                    $"| {engine.Name} | {label} | {result.EnqueueP50:0.00} | {result.EnqueueP99:0.00} | {result.Sent} | {result.PerSecond:0} | {result.DeliveryP50:0.0} | {result.DeliveryP99:0.0} | {result.PacedP50:0.0} | {result.PacedP99:0.0} | {result.Duplicates} |");
+                    $"| {engine.Name} | {label} | {result.EnqueueP50:0.00} | {result.EnqueueP99:0.00} | {result.Sent} | {result.PerSecond:0} | {result.DeliveryP50:0.0} | {result.DeliveryP99:0.0} | {result.PacedPerSecond:0} | {result.PacedP50:0.0} | {result.PacedP99:0.0} | {result.Duplicates} |");
             }
             catch (Exception exception)
             {
                 failures.Add($"- {engine.Name} / {label}: {exception.GetType().Name}: {exception.Message.Split('\n')[0]}");
-                report.AppendLine(CultureInfo.InvariantCulture, $"| {engine.Name} | {label} | failed, see below |  |  |  |  |  |  |  |  |");
+                report.AppendLine(CultureInfo.InvariantCulture, $"| {engine.Name} | {label} | failed, see below |  |  |  |  |  |  |  |  |  |");
             }
         }
 
@@ -91,7 +91,7 @@ finally
     }
 }
 
-internal sealed record BenchResult(double EnqueueP50, double EnqueueP99, int Sent, double PerSecond, double DeliveryP50, double DeliveryP99, double PacedP50, double PacedP99, int Duplicates);
+internal sealed record BenchResult(double EnqueueP50, double EnqueueP99, int Sent, double PerSecond, double DeliveryP50, double DeliveryP99, double PacedPerSecond, double PacedP50, double PacedP99, int Duplicates);
 
 internal static class Bench
 {
@@ -112,60 +112,84 @@ internal static class Bench
         var space = Providers.Namespace(provider);
 
         // Warm up: activate a consumer and the queues' readers.
-        var warmUp = streams.GetStream<long>(StreamId.Create(space, Guid.NewGuid()));
-        Deliveries.Reset();
-        await warmUp.OnNextAsync(Stopwatch.GetTimestamp());
+        var phase = Deliveries.Begin();
+        await streams.GetStream<BenchEvent>(StreamId.Create(space, Guid.NewGuid())).OnNextAsync(new(phase, 0, Stopwatch.GetTimestamp()));
         await DrainAsync(1);
 
-        Deliveries.Reset();
+        phase = Deliveries.Begin();
         var enqueue = new double[Sequential];
-        var single = streams.GetStream<long>(StreamId.Create(space, Guid.NewGuid()));
+        var single = streams.GetStream<BenchEvent>(StreamId.Create(space, Guid.NewGuid()));
         for (var i = 0; i < Sequential; i++)
         {
             var started = Stopwatch.GetTimestamp();
-            await single.OnNextAsync(started);
+            await single.OnNextAsync(new(phase, i, started));
             enqueue[i] = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         }
 
         await DrainAsync(Sequential);
         Array.Sort(enqueue);
+        var duplicates = Deliveries.Duplicates;
 
         var flat = await DeliverAsync(streams, space, pace: null);
         var paced = await DeliverAsync(streams, space, PacedInterval);
         return new(
             Percentile(enqueue, 0.5), Percentile(enqueue, 0.99), flat.Sent, flat.PerSecond, flat.P50, flat.P99,
-            paced.P50, paced.P99, flat.Duplicates + paced.Duplicates);
+            paced.Sent / Duration.TotalSeconds, paced.P50, paced.P99, duplicates + flat.Duplicates + paced.Duplicates);
     }
 
     /// <summary>
-    /// <see cref="Producers"/> producers send to their own streams for <see cref="Duration"/>, as fast as they can, or one
-    /// event every <paramref name="pace"/> each, which offers both providers the same load.
+    /// <see cref="Producers"/> producers send to their own streams for <see cref="Duration"/>: each as fast as its sends
+    /// complete, or, paced, one event every <paramref name="pace"/> without waiting for the previous send, so that a slow
+    /// enqueue does not lower the load offered.
     /// </summary>
     private static async Task<(int Sent, double PerSecond, double P50, double P99, int Duplicates)> DeliverAsync(IStreamProvider streams, string space, TimeSpan? pace)
     {
-        Deliveries.Reset();
-        var sent = 0;
+        var phase = Deliveries.Begin();
+        var next = -1L;
         var start = Stopwatch.GetTimestamp();
         using var stop = new CancellationTokenSource(Duration);
         await Task.WhenAll(Enumerable.Range(0, Producers).Select(_ => Task.Run(async () =>
         {
-            var stream = streams.GetStream<long>(StreamId.Create(space, Guid.NewGuid()));
-            using var timer = pace is { } interval ? new PeriodicTimer(interval) : null;
-            while (!stop.IsCancellationRequested)
+            var stream = streams.GetStream<BenchEvent>(StreamId.Create(space, Guid.NewGuid()));
+            if (pace is not { } interval)
             {
-                await stream.OnNextAsync(Stopwatch.GetTimestamp());
-                Interlocked.Increment(ref sent);
-                if (timer is not null && !await timer.WaitForNextTickAsync(CancellationToken.None))
+                while (!stop.IsCancellationRequested)
                 {
-                    return;
+                    await stream.OnNextAsync(new(phase, Interlocked.Increment(ref next), Stopwatch.GetTimestamp()));
                 }
+
+                return;
             }
+
+            // Each send is due at a fixed offset from the start, and a late loop catches up, so the rate holds however
+            // coarse the timer. Sends run on the thread pool, since a driver whose async calls run synchronously, such as
+            // SQLite's, would block the loop.
+            var sends = new List<Task>();
+            for (var i = 0; ; i++)
+            {
+                var due = interval * i;
+                if (due >= Duration)
+                {
+                    break;
+                }
+
+                if (due - Stopwatch.GetElapsedTime(start) is { } wait && wait > TimeSpan.Zero)
+                {
+                    await Task.Delay(wait);
+                }
+
+                var id = Interlocked.Increment(ref next);
+                sends.Add(Task.Run(() => stream.OnNextAsync(new(phase, id, Stopwatch.GetTimestamp()))));
+            }
+
+            await Task.WhenAll(sends);
         })));
 
+        var sent = (int)Interlocked.Read(ref next) + 1;
         await DrainAsync(sent);
         var elapsed = Stopwatch.GetElapsedTime(start);
         var latencies = Deliveries.Latencies();
-        return (sent, latencies.Length / elapsed.TotalSeconds, Percentile(latencies, 0.5), Percentile(latencies, 0.99), latencies.Length - sent);
+        return (sent, latencies.Length / elapsed.TotalSeconds, Percentile(latencies, 0.5), Percentile(latencies, 0.99), Deliveries.Duplicates);
     }
 
     public static InProcessTestCluster CreateCluster(Engine engine, bool withInBox)
@@ -219,15 +243,15 @@ internal static class Bench
         options.ConnectionString = engine.ConnectionString;
     }
 
-    /// <summary>Waits until <paramref name="expected"/> events were delivered, or fails the run.</summary>
+    /// <summary>Waits until <paramref name="expected"/> distinct events of this phase were delivered, or fails the run.</summary>
     private static async Task DrainAsync(int expected)
     {
         var deadline = Stopwatch.GetTimestamp() + (long)(DrainTimeout.TotalSeconds * Stopwatch.Frequency);
-        while (Deliveries.Count < expected)
+        while (Deliveries.Unique < expected)
         {
             if (Stopwatch.GetTimestamp() > deadline)
             {
-                throw new TimeoutException($"Only {Deliveries.Count} of {expected} events were delivered within {DrainTimeout.TotalSeconds:0} s.");
+                throw new TimeoutException($"Only {Deliveries.Unique} of {expected} distinct events were delivered within {DrainTimeout.TotalSeconds:0} s.");
             }
 
             await Task.Delay(20);
