@@ -15,11 +15,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Streaming\Scarlet.Orleans.Streaming.AdoNet\Scarlet.Orleans.Streaming.AdoNet.csproj" />
+    <!-- The end-to-end tests keep pub-sub state in grain storage on the same database. -->
+    <ProjectReference Include="..\..\..\src\Persistence\Scarlet.Orleans.Persistence.AdoNet\Scarlet.Orleans.Persistence.AdoNet.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="Microsoft.Orleans.Sdk" />
+    <PackageReference Include="Microsoft.Orleans.TestingHost" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="Npgsql" />

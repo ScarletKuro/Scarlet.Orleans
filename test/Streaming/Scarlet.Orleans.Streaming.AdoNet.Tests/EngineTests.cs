@@ -35,3 +35,90 @@ public sealed class MySqlStreamReceiverTests(MySqlDatabaseFixture fixture) : Str
 public sealed class MySqlDataStreamReceiverTests(MySqlDataDatabaseFixture fixture) : StreamReceiverTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
 
 public sealed class MariaDbStreamReceiverTests(MariaDbDatabaseFixture fixture) : StreamReceiverTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+// One collection per engine: its cluster is shared by its end-to-end classes, which run one at a time, since each
+// two-silo cluster holds its own connection pools.
+
+public sealed class SqliteStreamingClusterFixture() : StreamingClusterFixture(new SqliteDatabaseFixture());
+
+[CollectionDefinition(Name)]
+public sealed class SqliteStreamingCluster : ICollectionFixture<SqliteStreamingClusterFixture>, ICollectionFixture<SqliteDatabaseFixture>
+{
+    public const string Name = "Sqlite streaming cluster";
+}
+
+[Collection(SqliteStreamingCluster.Name)]
+public sealed class SqliteStreamingClusterTests(SqliteStreamingClusterFixture fixture) : StreamingClusterTests(fixture);
+
+[Collection(SqliteStreamingCluster.Name)]
+public sealed class SqliteStreamingHandOverTests(SqliteDatabaseFixture fixture) : StreamingHandOverTests(fixture);
+
+public sealed class PostgreSqlStreamingClusterFixture() : StreamingClusterFixture(new PostgreSqlDatabaseFixture());
+
+[CollectionDefinition(Name)]
+public sealed class PostgreSqlStreamingCluster : ICollectionFixture<PostgreSqlStreamingClusterFixture>, ICollectionFixture<PostgreSqlDatabaseFixture>
+{
+    public const string Name = "PostgreSql streaming cluster";
+}
+
+[Collection(PostgreSqlStreamingCluster.Name)]
+public sealed class PostgreSqlStreamingClusterTests(PostgreSqlStreamingClusterFixture fixture) : StreamingClusterTests(fixture);
+
+[Collection(PostgreSqlStreamingCluster.Name)]
+public sealed class PostgreSqlStreamingHandOverTests(PostgreSqlDatabaseFixture fixture) : StreamingHandOverTests(fixture);
+
+public sealed class SqlServerStreamingClusterFixture() : StreamingClusterFixture(new SqlServerDatabaseFixture());
+
+[CollectionDefinition(Name)]
+public sealed class SqlServerStreamingCluster : ICollectionFixture<SqlServerStreamingClusterFixture>, ICollectionFixture<SqlServerDatabaseFixture>
+{
+    public const string Name = "SqlServer streaming cluster";
+}
+
+[Collection(SqlServerStreamingCluster.Name)]
+public sealed class SqlServerStreamingClusterTests(SqlServerStreamingClusterFixture fixture) : StreamingClusterTests(fixture);
+
+[Collection(SqlServerStreamingCluster.Name)]
+public sealed class SqlServerStreamingHandOverTests(SqlServerDatabaseFixture fixture) : StreamingHandOverTests(fixture);
+
+public sealed class MySqlStreamingClusterFixture() : StreamingClusterFixture(new MySqlDatabaseFixture());
+
+[CollectionDefinition(Name)]
+public sealed class MySqlStreamingCluster : ICollectionFixture<MySqlStreamingClusterFixture>, ICollectionFixture<MySqlDatabaseFixture>
+{
+    public const string Name = "MySql streaming cluster";
+}
+
+[Collection(MySqlStreamingCluster.Name)]
+public sealed class MySqlStreamingClusterTests(MySqlStreamingClusterFixture fixture) : StreamingClusterTests(fixture);
+
+[Collection(MySqlStreamingCluster.Name)]
+public sealed class MySqlStreamingHandOverTests(MySqlDatabaseFixture fixture) : StreamingHandOverTests(fixture);
+
+public sealed class MySqlDataStreamingClusterFixture() : StreamingClusterFixture(new MySqlDataDatabaseFixture());
+
+[CollectionDefinition(Name)]
+public sealed class MySqlDataStreamingCluster : ICollectionFixture<MySqlDataStreamingClusterFixture>, ICollectionFixture<MySqlDataDatabaseFixture>
+{
+    public const string Name = "MySqlData streaming cluster";
+}
+
+[Collection(MySqlDataStreamingCluster.Name)]
+public sealed class MySqlDataStreamingClusterTests(MySqlDataStreamingClusterFixture fixture) : StreamingClusterTests(fixture);
+
+[Collection(MySqlDataStreamingCluster.Name)]
+public sealed class MySqlDataStreamingHandOverTests(MySqlDataDatabaseFixture fixture) : StreamingHandOverTests(fixture);
+
+public sealed class MariaDbStreamingClusterFixture() : StreamingClusterFixture(new MariaDbDatabaseFixture());
+
+[CollectionDefinition(Name)]
+public sealed class MariaDbStreamingCluster : ICollectionFixture<MariaDbStreamingClusterFixture>, ICollectionFixture<MariaDbDatabaseFixture>
+{
+    public const string Name = "MariaDb streaming cluster";
+}
+
+[Collection(MariaDbStreamingCluster.Name)]
+public sealed class MariaDbStreamingClusterTests(MariaDbStreamingClusterFixture fixture) : StreamingClusterTests(fixture);
+
+[Collection(MariaDbStreamingCluster.Name)]
+public sealed class MariaDbStreamingHandOverTests(MariaDbDatabaseFixture fixture) : StreamingHandOverTests(fixture);

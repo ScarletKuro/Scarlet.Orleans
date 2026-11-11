@@ -529,7 +529,7 @@ These facts, read from the Orleans 10.4 source, shape the rules below.
 - Messages whose delivery failed are left out of the purge, so they are never confirmed; the failure handler or the visibility timeout must settle them.
 - On shutdown, and when a rebalance moves the queue to another silo, the agent calls `Shutdown` without confirming what is still cached. The new owner may dequeue the same rows at once, which is why every operation carries a receipt, and why the receiver releases what it holds.
 - `SimpleQueueCache` adds batches in arrival order without checking them, and places cursors by comparing tokens, so tokens must strictly increase across reads. The failure handler receives that cache token, not a database ID.
-- Orleans ships no streaming TestKit, and its streaming test runners are not packaged; the test projects vendor the runners' source from the Orleans release we test against, as the benchmarks vendor the in-box scripts.
+- Orleans ships no streaming TestKit, and its streaming test runners are not packaged. They depend on a large part of Orleans' test grains and helpers, so instead of vendoring them, the end-to-end tests are this provider's own, aimed at what a queue provider can get wrong (below).
 
 **Tables**
 
@@ -589,8 +589,8 @@ At-least-once. Consumers must tolerate duplicates, from redelivery and from an e
 
 - Store conformance for every operation, including concurrent dequeuers on one queue (no message dequeued twice before its visibility timeout), receipt rules for confirm, release and fail, enqueue retried after a commit-time connection failure (one message while the first is pending; the same `message_key` if the first was already confirmed), and eviction bounds.
 - Receiver tests: out-of-order dequeue within a read, redelivery after newer messages are cached, release on shutdown, duplicate attempts confirmed once.
-- End-to-end streaming tests (the Orleans streaming test suites) on every engine.
-- A cluster test where a silo shuts down while holding unconfirmed messages, and every message is delivered.
+- End-to-end tests in a two-silo cluster on every engine: every event delivered in order from client and grain producers, implicit and explicit subscriptions, batches, and a failed delivery retried through the failure handler.
+- Hand-over tests: a silo stopped while holding cached, undelivered messages releases them, and its queues' next owner delivers them well within the visibility timeout; a silo killed in process loses none, which return when their visibility ends. A mutation that skips the release fails the first.
 
 **EF flavour note**
 
