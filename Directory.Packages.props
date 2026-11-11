@@ -13,6 +13,7 @@
     <PackageVersion Include="Microsoft.Orleans.GrainDirectory.AdoNet" Version="$(OrleansVersion)-alpha.1" />
     <PackageVersion Include="Microsoft.Orleans.Persistence.AdoNet" Version="$(OrleansVersion)" />
     <PackageVersion Include="Microsoft.Orleans.Reminders.AdoNet" Version="$(OrleansVersion)" />
+    <PackageVersion Include="Microsoft.Orleans.Streaming.AdoNet" Version="$(OrleansVersion)-alpha.1" />
     <PackageVersion Include="Microsoft.Orleans.Reminders" Version="$(OrleansVersion)" />
     <PackageVersion Include="Microsoft.Orleans.Streaming" Version="$(OrleansVersion)" />
     <PackageVersion Include="Microsoft.Orleans.Transactions" Version="$(OrleansVersion)" />

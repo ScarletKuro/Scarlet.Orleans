@@ -136,6 +136,24 @@ state plus every pending version for the wrapper. After the transfers, the accou
 dotnet run -c Release --project bench/Scarlet.Orleans.Transactions.Benchmarks -- transactions-results.md
 ```
 
+## Streaming benchmarks
+
+`Scarlet.Orleans.Streaming.Benchmarks` compares Scarlet's relational stream provider with the in-box
+`Microsoft.Orleans.Streaming.AdoNet` **10.4.0-alpha.1**, set up from its vendored v10.4.0 scripts, on PostgreSQL, SQL
+Server and MySQL, in one silo per engine with four queues each. SQLite runs Scarlet's alone.
+
+- **Enqueue**: 1,000 events sent one at a time from a client, timing each send.
+- **Delivery**: 16 client producers, each sending to its own stream for 10 seconds, read by one implicitly subscribed
+  consumer grain per stream. Throughput counts deliveries over the time from the first send to the last delivery;
+  latency runs from send to consumer, through the database. Deliveries beyond the events sent are duplicates.
+
+Every event must be delivered within two minutes of the last send. A provider that misses that, or whose scripts fail
+to install, is reported as an incomplete run, with the reason, rather than with numbers.
+
+```sh
+dotnet run -c Release --project bench/Scarlet.Orleans.Streaming.Benchmarks -- streaming-results.md
+```
+
 ## Reading the results
 
 The workloads measure the provider and the round trip to the database, which dominates. Run client and database the way
@@ -148,3 +166,4 @@ in `results/`.
 - [Clustering: local run across all four engines, 2026-10-31](results/2026-10-31-clustering-local.md)
 - [Transactional state: local run across all four engines, before batching, 2026-11-01](results/2026-11-01-transactions-local.md)
 - [Transactional state: two local runs across all four engines, 2026-11-12](results/2026-11-12-transactions-local.md)
+- [Streaming: two local runs across all four engines, 2026-11-12](results/2026-11-12-streaming-local.md)

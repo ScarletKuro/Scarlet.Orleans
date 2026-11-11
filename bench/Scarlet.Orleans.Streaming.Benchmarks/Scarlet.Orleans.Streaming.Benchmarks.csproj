@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Compares relational stream providers on the same databases. See README.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1303;CA1812;CA2007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\Engine.cs" Link="Engine.cs" />
+    <None Include="..\Scarlet.Orleans.Persistence.Benchmarks\InBoxScripts\*-Main.sql" Link="InBoxScripts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="InBoxScripts\*.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Streaming\Scarlet.Orleans.Streaming.AdoNet\Scarlet.Orleans.Streaming.AdoNet.csproj" />
+    <ProjectReference Include="..\..\src\Persistence\Scarlet.Orleans.Persistence.AdoNet\Scarlet.Orleans.Persistence.AdoNet.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Orleans.Sdk" />
+    <PackageReference Include="Microsoft.Orleans.TestingHost" />
+    <PackageReference Include="Microsoft.Orleans.Streaming.AdoNet" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="MySqlConnector" />
+  </ItemGroup>
+
+</Project>
