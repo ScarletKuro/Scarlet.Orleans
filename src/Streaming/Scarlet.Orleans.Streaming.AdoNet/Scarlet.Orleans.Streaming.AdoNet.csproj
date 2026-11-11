@@ -17,6 +17,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Orleans.Streaming" />
     <PackageReference Include="System.IO.Hashing" />
+    <!-- Build time only: generates the serializer of the batch container, which Orleans sends to consumer grains. Its
+         runtime parts come with Microsoft.Orleans.Streaming. -->
+    <PackageReference Include="Microsoft.Orleans.Sdk" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

@@ -23,3 +23,15 @@ public sealed class MySqlDataStreamingSchemaManagementTests(MySqlDataDatabaseFix
 public sealed class MariaDbStreamQueueStoreTests(MariaDbDatabaseFixture fixture) : StreamQueueStoreTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
 
 public sealed class MariaDbStreamingSchemaManagementTests(MariaDbDatabaseFixture fixture) : StreamingSchemaManagementTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class SqliteStreamReceiverTests(SqliteDatabaseFixture fixture) : StreamReceiverTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlStreamReceiverTests(PostgreSqlDatabaseFixture fixture) : StreamReceiverTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerStreamReceiverTests(SqlServerDatabaseFixture fixture) : StreamReceiverTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlStreamReceiverTests(MySqlDatabaseFixture fixture) : StreamReceiverTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MySqlDataStreamReceiverTests(MySqlDataDatabaseFixture fixture) : StreamReceiverTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class MariaDbStreamReceiverTests(MariaDbDatabaseFixture fixture) : StreamReceiverTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
