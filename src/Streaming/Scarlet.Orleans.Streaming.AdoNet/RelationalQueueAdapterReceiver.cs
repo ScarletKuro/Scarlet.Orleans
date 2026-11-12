@@ -81,8 +81,12 @@ internal sealed partial class RelationalQueueAdapterReceiver(
             var now = timeProvider.GetUtcNow();
             await EvictIfDueAsync(now, cancellationToken).ConfigureAwait(false);
 
+            // A dequeue that has started runs to its end: Orleans cancels reads when it stops the queue, and a dequeue
+            // cancelled after the server committed it would hide its messages until their visibility timeout, out of
+            // the held messages that shutdown releases.
+            cancellationToken.ThrowIfCancellationRequested();
             var messages = await observer.ObserveAsync("dequeue", queue, () =>
-                store.DequeueAsync(queue, maxCount, options.MaxAttempts, now, now + options.VisibilityTimeout, cancellationToken)).ConfigureAwait(false);
+                store.DequeueAsync(queue, maxCount, options.MaxAttempts, now, now + options.VisibilityTimeout, CancellationToken.None)).ConfigureAwait(false);
             observer.Count("dequeued", messages.Count);
             observer.Count("redelivered", messages.Count(static m => m.Receipt > 1));
             var batches = new List<IBatchContainer>(messages.Count);
@@ -96,11 +100,13 @@ internal sealed partial class RelationalQueueAdapterReceiver(
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
-                    // A payload that does not deserialize never will, so it goes to the dead letters at once.
-                    LogUnreadableMessage(exception, message.MessageId, queue);
+                    // A failed attempt, not proof of a corrupt payload: a stopping silo disposes the serializer under a
+                    // read in progress, which fails valid messages too. The message is visible again at once, for this or
+                    // the next owner, and goes to the dead letters only when it fails its last attempt.
                     var outcome = await observer.ObserveAsync("fail", queue, () =>
-                        store.FailAsync(queue, message.ToReceipt(), message.Receipt, now, now + options.DeadLetterRetention, cancellationToken)).ConfigureAwait(false);
-                    observer.Count("dead_lettered", outcome == FailOutcome.DeadLettered ? 1 : 0);
+                        store.FailAsync(queue, message.ToReceipt(), options.MaxAttempts, now, now + options.DeadLetterRetention, cancellationToken)).ConfigureAwait(false);
+                    LogUnreadableMessage(exception, message.MessageId, queue, outcome);
+                    observer.Count(outcome switch { FailOutcome.Retried => "retried", FailOutcome.DeadLettered => "dead_lettered", _ => "stale" }, 1);
                     continue;
                 }
 
@@ -187,7 +193,7 @@ internal sealed partial class RelationalQueueAdapterReceiver(
     {
         try
         {
-            await ReleaseHeldAsync(timeout, cancellationToken).ConfigureAwait(false);
+            await ReleaseHeldAsync(timeout).ConfigureAwait(false);
         }
         finally
         {
@@ -195,11 +201,16 @@ internal sealed partial class RelationalQueueAdapterReceiver(
         }
     }
 
-    private async Task ReleaseHeldAsync(TimeSpan timeout, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Bounded by <paramref name="timeout"/> rather than by Orleans' cancellation token, which Orleans cancels
+    /// as it stops, under load before the release has run; a release is one short statement that spares the queue's
+    /// next owner a visibility timeout.
+    /// </remarks>
+    private async Task ReleaseHeldAsync(TimeSpan timeout)
     {
         try
         {
-            await gate.CloseAsync().WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+            await gate.CloseAsync().WaitAsync(timeout).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
@@ -227,10 +238,10 @@ internal sealed partial class RelationalQueueAdapterReceiver(
         try
         {
             var released = await observer.ObserveAsync("release", queue, () =>
-                store.ReleaseAsync(queue, held, timeProvider.GetUtcNow(), cancellationToken)).WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+                store.ReleaseAsync(queue, held, timeProvider.GetUtcNow(), CancellationToken.None)).WaitAsync(timeout).ConfigureAwait(false);
             observer.Count("released", released);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception)
         {
             // The messages become visible again when their visibility timeout ends.
             LogReleaseFailed(exception, held.Length, queue);
@@ -304,8 +315,8 @@ internal sealed partial class RelationalQueueAdapterReceiver(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not register stream queue {Queue}; the next read tries again.")]
     private partial void LogInitializationFailed(Exception exception, StreamQueueKey queue);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Message {MessageId} of stream queue {Queue} could not be deserialized and was moved to the dead letters.")]
-    private partial void LogUnreadableMessage(Exception exception, long messageId, StreamQueueKey queue);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Message {MessageId} of stream queue {Queue} could not be deserialized; its attempt failed ({Outcome}).")]
+    private partial void LogUnreadableMessage(Exception exception, long messageId, StreamQueueKey queue, FailOutcome outcome);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Stream queue {Queue} did not finish its reads before the shutdown timeout; its held messages reappear after their visibility timeout.")]
     private partial void LogShutdownTimedOut(StreamQueueKey queue);

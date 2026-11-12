@@ -133,7 +133,7 @@ public abstract class StreamReceiverTests(DatabaseFixture fixture) : IAsyncLifet
     }
 
     [Fact]
-    public async Task UnreadablePayload_GoesToTheDeadLetters_AndTheRestAreRead()
+    public async Task UnreadablePayload_FailsEachAttempt_UntilTheDeadLetters_AndTheRestAreRead()
     {
         var factory = CreateFactory();
         var adapter = await factory.CreateAdapter(CancellationToken);
@@ -142,14 +142,52 @@ public abstract class StreamReceiverTests(DatabaseFixture fixture) : IAsyncLifet
         await EnqueueAsync(adapter, "a");
 
         Assert.Equal(["a"], Events(await ReadAsync(receiver)));
+        for (var attempt = 2; attempt <= options.MaxAttempts; attempt++)
+        {
+            Assert.Equal(0, await CountDeadLettersAsync());
+            Assert.Empty(await ReadAsync(receiver));
+        }
+
         Assert.Equal(1, await CountDeadLettersAsync());
+    }
+
+    [Fact]
+    public async Task Shutdown_WithACancelledToken_StillReleasesWhatItHolds()
+    {
+        var (adapter, receiver) = await CreateAsync();
+        await EnqueueAsync(adapter, "a");
+        Assert.Single(await ReadAsync(receiver));
+
+        await receiver.Shutdown(TimeSpan.FromSeconds(30), new CancellationToken(canceled: true));
+
+        var (_, next) = await CreateAsync();
+        Assert.Equal(["a"], Events(await ReadAsync(next)));
+    }
+
+    [Fact]
+    public async Task ReadWithADisposedSerializer_LosesNoMessage()
+    {
+        var services = new ServiceCollection().AddSerializer().BuildServiceProvider();
+        var disposed = services.GetRequiredService<Serializer>();
+        await services.DisposeAsync();
+        var (adapter, _) = await CreateAsync();
+        await EnqueueAsync(adapter, "a");
+        var stopping = new RelationalQueueAdapterFactory(provider, "service", store, disposed, options, new HashRingStreamQueueMapperOptions { TotalQueueCount = 1 }, new SimpleQueueCacheOptions(), time, NullLoggerFactory.Instance);
+        await stopping.CreateAdapter(CancellationToken);
+
+        Assert.Empty(await ReadAsync(stopping.CreateReceiver(SingleQueue(stopping))));
+
+        var (_, next) = await CreateAsync();
+        Assert.Equal(["a"], Events(await ReadAsync(next)));
+        Assert.Equal(0, await CountDeadLettersAsync());
     }
 
     [Fact]
     public async Task FailedInitialization_IsFinishedByTheNextRead()
     {
-        var failing = new FailingRegistration(store);
-        var factory = CreateFactory(failing);
+        var attempts = 0;
+        var intercepting = new InterceptingStore(store) { BeforeRegister = () => ++attempts <= 2 ? throw new InvalidOperationException("Unreachable.") : Task.CompletedTask };
+        var factory = CreateFactory(intercepting);
         var adapter = await factory.CreateAdapter(CancellationToken);
         var receiver = adapter.CreateReceiver(SingleQueue(factory));
         await EnqueueAsync(adapter, "a");
@@ -158,7 +196,69 @@ public abstract class StreamReceiverTests(DatabaseFixture fixture) : IAsyncLifet
         await Assert.ThrowsAsync<InvalidOperationException>(() => ReadAsync(receiver));
 
         Assert.Equal(["a"], Events(await ReadAsync(receiver)));
-        Assert.Equal(3, failing.Attempts);
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
+    public async Task FailedDequeue_FailsTheRead_AndTheNextReadTakesTheMessages()
+    {
+        var failures = 1;
+        var intercepting = new InterceptingStore(store) { BeforeDequeue = () => failures-- > 0 ? throw new InvalidOperationException("Unreachable.") : Task.CompletedTask };
+        var factory = CreateFactory(intercepting);
+        var adapter = await factory.CreateAdapter(CancellationToken);
+        var receiver = adapter.CreateReceiver(SingleQueue(factory));
+        await EnqueueAsync(adapter, "a");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ReadAsync(receiver));
+
+        var read = Assert.Single(await ReadAsync(receiver));
+        Assert.Equal(["a"], Events([read]));
+    }
+
+    [Fact]
+    public async Task FailedConfirmation_LeavesTheMessage_ToBeDeliveredAgain()
+    {
+        var intercepting = new InterceptingStore(store) { BeforeConfirm = () => throw new InvalidOperationException("Unreachable.") };
+        var factory = CreateFactory(intercepting);
+        var adapter = await factory.CreateAdapter(CancellationToken);
+        var receiver = adapter.CreateReceiver(SingleQueue(factory));
+        await EnqueueAsync(adapter, "a");
+        var read = await ReadAsync(receiver);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => receiver.MessagesDeliveredAsync(read, CancellationToken));
+
+        time.Advance(options.VisibilityTimeout);
+        Assert.Equal(["a"], Events(await ReadAsync(receiver)));
+    }
+
+    [Fact]
+    public async Task Shutdown_DuringARead_WaitsForIt_AndReleasesWhatItTook()
+    {
+        var dequeueing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var proceed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var intercepting = new InterceptingStore(store);
+        var factory = CreateFactory(intercepting);
+        var adapter = await factory.CreateAdapter(CancellationToken);
+        var receiver = adapter.CreateReceiver(SingleQueue(factory));
+        await EnqueueAsync(adapter, "a");
+        intercepting.BeforeDequeue = () =>
+        {
+            dequeueing.TrySetResult();
+            return proceed.Task;
+        };
+
+        var read = ReadAsync(receiver);
+        await dequeueing.Task;
+        var shutdown = receiver.Shutdown(TimeSpan.FromSeconds(30), CancellationToken);
+        await Task.Delay(100, CancellationToken);
+        Assert.False(shutdown.IsCompleted);
+
+        proceed.SetResult();
+        Assert.Equal(["a"], Events(await read));
+        await shutdown;
+
+        var (_, next) = await CreateAsync();
+        Assert.Equal(["a"], Events(await ReadAsync(next)));
     }
 
     [Fact]
@@ -289,24 +389,40 @@ public abstract class StreamReceiverTests(DatabaseFixture fixture) : IAsyncLifet
         public void Advance(TimeSpan by) => now += by;
     }
 
-    /// <summary>Fails the first two registrations, as a database unreachable at startup would.</summary>
-    private sealed class FailingRegistration(IStreamQueueStore inner) : IStreamQueueStore
+    /// <summary>
+    /// A store whose register, dequeue and confirm first run a hook, which can fail them, as an unreachable database
+    /// would, or hold them, as a slow one would.
+    /// </summary>
+    private sealed class InterceptingStore(IStreamQueueStore inner) : IStreamQueueStore
     {
-        public int Attempts { get; private set; }
+        public Func<Task>? BeforeRegister { get; set; }
 
-        public Task RegisterQueueAsync(StreamQueueKey queue, DateTimeOffset now, DateTimeOffset evictOn, CancellationToken cancellationToken) =>
-            ++Attempts <= 2 ? throw new InvalidOperationException("Unreachable.") : inner.RegisterQueueAsync(queue, now, evictOn, cancellationToken);
+        public Func<Task>? BeforeDequeue { get; set; }
+
+        public Func<Task>? BeforeConfirm { get; set; }
+
+        public async Task RegisterQueueAsync(StreamQueueKey queue, DateTimeOffset now, DateTimeOffset evictOn, CancellationToken cancellationToken)
+        {
+            await (BeforeRegister?.Invoke() ?? Task.CompletedTask);
+            await inner.RegisterQueueAsync(queue, now, evictOn, cancellationToken);
+        }
 
         public Task InitializeAsync(CancellationToken cancellationToken) => inner.InitializeAsync(cancellationToken);
 
         public Task EnqueueAsync(StreamQueueKey queue, Guid messageKey, byte[] payload, DateTimeOffset now, DateTimeOffset expiresOn, CancellationToken cancellationToken) =>
             inner.EnqueueAsync(queue, messageKey, payload, now, expiresOn, cancellationToken);
 
-        public Task<IReadOnlyList<DequeuedMessage>> DequeueAsync(StreamQueueKey queue, int maxCount, int maxAttempts, DateTimeOffset now, DateTimeOffset visibleOn, CancellationToken cancellationToken) =>
-            inner.DequeueAsync(queue, maxCount, maxAttempts, now, visibleOn, cancellationToken);
+        public async Task<IReadOnlyList<DequeuedMessage>> DequeueAsync(StreamQueueKey queue, int maxCount, int maxAttempts, DateTimeOffset now, DateTimeOffset visibleOn, CancellationToken cancellationToken)
+        {
+            await (BeforeDequeue?.Invoke() ?? Task.CompletedTask);
+            return await inner.DequeueAsync(queue, maxCount, maxAttempts, now, visibleOn, cancellationToken);
+        }
 
-        public Task<int> ConfirmAsync(StreamQueueKey queue, IReadOnlyList<MessageReceipt> receipts, CancellationToken cancellationToken) =>
-            inner.ConfirmAsync(queue, receipts, cancellationToken);
+        public async Task<int> ConfirmAsync(StreamQueueKey queue, IReadOnlyList<MessageReceipt> receipts, CancellationToken cancellationToken)
+        {
+            await (BeforeConfirm?.Invoke() ?? Task.CompletedTask);
+            return await inner.ConfirmAsync(queue, receipts, cancellationToken);
+        }
 
         public Task<int> ReleaseAsync(StreamQueueKey queue, IReadOnlyList<MessageReceipt> receipts, DateTimeOffset now, CancellationToken cancellationToken) =>
             inner.ReleaseAsync(queue, receipts, now, cancellationToken);

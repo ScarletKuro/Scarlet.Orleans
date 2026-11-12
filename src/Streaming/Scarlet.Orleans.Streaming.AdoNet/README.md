@@ -50,6 +50,7 @@ queue count (`HashRingStreamQueueMapperOptions`, 8 by default), which must match
   that has since been delivered again changes nothing.
 - **Hand-over.** A silo that stops, or loses a queue to another silo, releases the messages it holds, and the next owner
   reads them at once.
-- **Dead letters.** A message out of attempts, expired, or whose payload cannot be read is moved to
-  `orleans_stream_dead_letter`, and deleted after `DeadLetterRetention`.
+- **Dead letters.** A message out of attempts or expired is moved to
+  `orleans_stream_dead_letter`, and deleted after `DeadLetterRetention`. A payload that cannot be deserialized counts as
+  a failed attempt, so a message read while its silo stops is not lost.
 - Queues are not rewindable.
