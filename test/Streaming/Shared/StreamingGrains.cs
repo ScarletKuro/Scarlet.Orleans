@@ -16,6 +16,8 @@ public static class StreamNamespaces
     public const string Failing = "failing";
 
     public const string Slow = "slow";
+
+    public const string Context = "context";
 }
 
 /// <summary>
@@ -27,6 +29,12 @@ public static class DeliveryLog
     private static readonly ConcurrentDictionary<Guid, ConcurrentQueue<int>> Received = new();
 
     private static readonly ConcurrentDictionary<(Guid, int), int> Attempts = new();
+
+    private static readonly ConcurrentDictionary<(Guid, int), string?> Contexts = new();
+
+    public static void RecordContext(Guid stream, int item, string? trace) => Contexts[(stream, item)] = trace;
+
+    public static string? ContextOf(Guid stream, int item) => Contexts.GetValueOrDefault((stream, item));
 
     public static void Record(Guid stream, int item) => Received.GetOrAdd(stream, static _ => new()).Enqueue(item);
 
@@ -53,7 +61,7 @@ public static class DeliveryLog
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             missing.ExceptWith(Of(stream));
-            throw new TimeoutException($"Stream {stream} lacked {missing.Count} items after {timeout}: {string.Join(", ", missing.Order().Take(20))}.");
+            throw new TimeoutException($"Stream {stream} lacked {missing.Count} items after {timeout}: {string.Join(", ", missing.Order().Take(20))}. Provider warnings:{Environment.NewLine}{WarningLog.Recent}");
         }
     }
 }
@@ -61,6 +69,8 @@ public static class DeliveryLog
 public interface IConsumerGrain : IGrainWithGuidKey
 {
     Task Subscribe();
+
+    Task Deactivate();
 }
 
 public interface IProducerGrain : IGrainWithGuidKey
@@ -79,6 +89,12 @@ public sealed class ImplicitConsumerGrain : Grain, IConsumerGrain
             .SubscribeAsync((item, _) => Record(item));
 
     public Task Subscribe() => Task.CompletedTask;
+
+    public Task Deactivate()
+    {
+        DeactivateOnIdle();
+        return Task.CompletedTask;
+    }
 
     private Task Record(int item)
     {
@@ -105,6 +121,12 @@ public sealed class FailingConsumerGrain : Grain, IConsumerGrain
             });
 
     public Task Subscribe() => Task.CompletedTask;
+
+    public Task Deactivate()
+    {
+        DeactivateOnIdle();
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Takes a while over every item, so a silo stopping holds messages that are cached but not yet delivered.</summary>
@@ -120,6 +142,12 @@ public sealed class SlowConsumerGrain : Grain, IConsumerGrain
             });
 
     public Task Subscribe() => Task.CompletedTask;
+
+    public Task Deactivate()
+    {
+        DeactivateOnIdle();
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Subscribes explicitly, through pub-sub, when asked.</summary>
@@ -132,6 +160,64 @@ public sealed class ExplicitConsumerGrain : Grain, IConsumerGrain
                 DeliveryLog.Record(this.GetPrimaryKey(), item);
                 return Task.CompletedTask;
             });
+
+    public Task Deactivate()
+    {
+        DeactivateOnIdle();
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>
+/// Subscribes explicitly to any stream, recording under its own key, so that several can read one stream; and
+/// unsubscribes when asked.
+/// </summary>
+public interface ISubscriberGrain : IGrainWithGuidKey
+{
+    Task Subscribe(Guid stream);
+
+    Task Unsubscribe();
+}
+
+public sealed class SubscriberGrain : Grain, ISubscriberGrain
+{
+    private StreamSubscriptionHandle<int>? subscription;
+
+    public async Task Subscribe(Guid stream) =>
+        subscription = await this.GetStreamProvider(StreamNamespaces.Provider).GetStream<int>(StreamId.Create(StreamNamespaces.Explicit, stream))
+            .SubscribeAsync((item, _) =>
+            {
+                DeliveryLog.Record(this.GetPrimaryKey(), item);
+                return Task.CompletedTask;
+            });
+
+    public async Task Unsubscribe()
+    {
+        await subscription!.UnsubscribeAsync();
+        subscription = null;
+    }
+}
+
+/// <summary>Records every item of its implicitly subscribed stream, with the request context it arrived with.</summary>
+[ImplicitStreamSubscription(StreamNamespaces.Context)]
+public sealed class ContextConsumerGrain : Grain, IConsumerGrain
+{
+    public override Task OnActivateAsync(CancellationToken cancellationToken) =>
+        this.GetStreamProvider(StreamNamespaces.Provider).GetStream<int>(StreamId.Create(StreamNamespaces.Context, this.GetPrimaryKey()))
+            .SubscribeAsync((item, _) =>
+            {
+                DeliveryLog.RecordContext(this.GetPrimaryKey(), item, RequestContext.Get("trace") as string);
+                DeliveryLog.Record(this.GetPrimaryKey(), item);
+                return Task.CompletedTask;
+            });
+
+    public Task Subscribe() => Task.CompletedTask;
+
+    public Task Deactivate()
+    {
+        DeactivateOnIdle();
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class ProducerGrain : Grain, IProducerGrain

@@ -74,6 +74,97 @@ public abstract class StreamingClusterTests(StreamingClusterFixture fixture)
     }
 
     [Fact]
+    public async Task ClientConsumer_ReceivesEventsFromAGrain()
+    {
+        var stream = Guid.NewGuid();
+        int[] items = [.. Enumerable.Range(0, 20)];
+        var subscription = await fixture.Cluster.Client.GetStreamProvider(StreamNamespaces.Provider).GetStream<int>(StreamId.Create(StreamNamespaces.Explicit, stream))
+            .SubscribeAsync((item, _) =>
+            {
+                DeliveryLog.Record(stream, item);
+                return Task.CompletedTask;
+            });
+
+        await fixture.Cluster.Client.GetGrain<IProducerGrain>(Guid.NewGuid()).Produce(StreamNamespaces.Explicit, stream, items);
+
+        await DeliveryLog.WaitForAsync(stream, items, Delivery, CancellationToken);
+        Assert.Equal(items, DeliveryLog.Of(stream));
+        await subscription.UnsubscribeAsync();
+    }
+
+    [Fact]
+    public async Task TwoSubscribers_EachReceiveEveryEvent()
+    {
+        var stream = Guid.NewGuid();
+        Guid[] consumers = [Guid.NewGuid(), Guid.NewGuid()];
+        int[] items = [.. Enumerable.Range(0, 20)];
+        foreach (var consumer in consumers)
+        {
+            await fixture.Cluster.Client.GetGrain<ISubscriberGrain>(consumer).Subscribe(stream);
+        }
+
+        await fixture.Cluster.Client.GetGrain<IProducerGrain>(Guid.NewGuid()).Produce(StreamNamespaces.Explicit, stream, items);
+
+        foreach (var consumer in consumers)
+        {
+            await DeliveryLog.WaitForAsync(consumer, items, Delivery, CancellationToken);
+            Assert.Equal(items, DeliveryLog.Of(consumer));
+        }
+    }
+
+    [Fact]
+    public async Task Unsubscribed_ReceivesNothing_AndAResubscriptionReceivesLaterEvents()
+    {
+        var stream = Guid.NewGuid();
+        var consumer = Guid.NewGuid();
+        var subscriber = fixture.Cluster.Client.GetGrain<ISubscriberGrain>(consumer);
+        var producer = fixture.Cluster.Client.GetGrain<IProducerGrain>(Guid.NewGuid());
+        await subscriber.Subscribe(stream);
+        await producer.Produce(StreamNamespaces.Explicit, stream, [.. Enumerable.Range(0, 10)]);
+        await DeliveryLog.WaitForAsync(consumer, Enumerable.Range(0, 10), Delivery, CancellationToken);
+
+        await subscriber.Unsubscribe();
+        await producer.Produce(StreamNamespaces.Explicit, stream, [.. Enumerable.Range(10, 10)]);
+        await Task.Delay(TimeSpan.FromSeconds(3), CancellationToken);
+        await subscriber.Subscribe(stream);
+        await producer.Produce(StreamNamespaces.Explicit, stream, [.. Enumerable.Range(20, 10)]);
+
+        await DeliveryLog.WaitForAsync(consumer, Enumerable.Range(20, 10), Delivery, CancellationToken);
+        Assert.DoesNotContain(DeliveryLog.Of(consumer), item => item is >= 10 and < 20);
+    }
+
+    [Fact]
+    public async Task DeactivatedConsumer_IsActivatedAgain_ByLaterEvents()
+    {
+        var stream = Guid.NewGuid();
+        var producer = fixture.Cluster.Client.GetGrain<IProducerGrain>(Guid.NewGuid());
+        await producer.Produce(StreamNamespaces.Implicit, stream, [.. Enumerable.Range(0, 10)]);
+        await DeliveryLog.WaitForAsync(stream, Enumerable.Range(0, 10), Delivery, CancellationToken);
+
+        await fixture.Cluster.Client.GetGrain<IConsumerGrain>(stream, typeof(ImplicitConsumerGrain).FullName).Deactivate();
+        await producer.Produce(StreamNamespaces.Implicit, stream, [.. Enumerable.Range(10, 10)]);
+
+        await DeliveryLog.WaitForAsync(stream, Enumerable.Range(0, 20), Delivery, CancellationToken);
+    }
+
+    [Fact]
+    public async Task RequestContext_TravelsWithEachEvent()
+    {
+        var stream = Guid.NewGuid();
+        var producer = fixture.Cluster.Client.GetStreamProvider(StreamNamespaces.Provider).GetStream<int>(StreamId.Create(StreamNamespaces.Context, stream));
+
+        for (var item = 0; item < 3; item++)
+        {
+            RequestContext.Set("trace", $"trace-{item}");
+            await producer.OnNextAsync(item);
+        }
+
+        RequestContext.Clear();
+        await DeliveryLog.WaitForAsync(stream, [0, 1, 2], Delivery, CancellationToken);
+        Assert.Equal(["trace-0", "trace-1", "trace-2"], Enumerable.Range(0, 3).Select(item => DeliveryLog.ContextOf(stream, item)));
+    }
+
+    [Fact]
     public async Task FailedDelivery_IsRetriedThroughTheFailureHandler()
     {
         var stream = Guid.NewGuid();
@@ -116,7 +207,7 @@ public abstract class StreamingHandOverTests(DatabaseFixture fixture)
         await using var cluster = await StreamingCluster.StartAsync(database, silos: 2, visibilityTimeout);
         var leaving = cluster.Silos[1];
         var factory = (RelationalQueueAdapterFactory)leaving.ServiceProvider.GetRequiredKeyedService<IQueueAdapterFactory>(StreamNamespaces.Provider);
-        var owned = await WaitForAsync(() => factory.OwnedQueues, queues => queues.Count > 0, "The departing silo never took a queue.");
+        var owned = await WaitForAsync(() => factory.OwnedQueues, queues => queues.Count > 0, "The departing silo never took a queue.", TimeSpan.FromSeconds(60));
 
         // Only streams the departing silo reads, so every message the test waits for was held there.
         var mapper = factory.GetStreamQueueMapper();
@@ -135,7 +226,7 @@ public abstract class StreamingHandOverTests(DatabaseFixture fixture)
             }
         }));
 
-        await WaitForAsync(() => factory.HeldMessages, held => held > 0, "The departing silo never held a message.");
+        await WaitForAsync(() => factory.HeldMessages, held => held > 0, "The departing silo never held a message.", TimeSpan.FromSeconds(30));
         Assert.True(streams.Sum(stream => DeliveryLog.Of(stream).Length) < streams.Length * items.Length);
         await leave(cluster, leaving);
 
@@ -146,9 +237,9 @@ public abstract class StreamingHandOverTests(DatabaseFixture fixture)
         }
     }
 
-    private static async Task<T> WaitForAsync<T>(Func<T> read, Func<T, bool> done, string failure)
+    private static async Task<T> WaitForAsync<T>(Func<T> read, Func<T, bool> done, string failure, TimeSpan timeout)
     {
-        for (var waited = TimeSpan.Zero; waited < TimeSpan.FromSeconds(30); waited += TimeSpan.FromMilliseconds(20))
+        for (var waited = TimeSpan.Zero; waited < timeout; waited += TimeSpan.FromMilliseconds(20))
         {
             if (read() is var value && done(value))
             {

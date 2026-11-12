@@ -588,9 +588,10 @@ At-least-once. Consumers must tolerate duplicates, from redelivery and from an e
 **Tests**
 
 - Store conformance for every operation, including concurrent dequeuers on one queue (no message dequeued twice before its visibility timeout), receipt rules for confirm, release and fail, enqueue retried after a commit-time connection failure (one message while the first is pending; the same `message_key` if the first was already confirmed), and eviction bounds.
-- Receiver tests: out-of-order dequeue within a read, redelivery after newer messages are cached, release on shutdown, duplicate attempts confirmed once.
-- End-to-end tests in a two-silo cluster on every engine: every event delivered in order from client and grain producers, implicit and explicit subscriptions, batches, and a failed delivery retried through the failure handler.
-- Hand-over tests: a silo stopped while holding cached, undelivered messages releases them, and its queues' next owner delivers them well within the visibility timeout; a silo killed in process loses none, which return when their visibility ends. A mutation that skips the release fails the first.
+- Lost responses: enqueues, dequeues and confirmations through a connection that drops responses, with every enqueued message delivered.
+- Receiver tests: out-of-order dequeue within a read, redelivery after newer messages are cached, release on shutdown, duplicate attempts confirmed once, a failed dequeue or confirmation, a shutdown during a read, which waits for it and releases what it took, and the metrics against what happened. Batch container tests: the serializer round trip, events and their tokens, and the request context.
+- End-to-end tests in a two-silo cluster on every engine: every event delivered in order from client and grain producers, implicit and explicit subscriptions, client consumers, two subscribers on one stream, unsubscribing and subscribing again, a deactivated consumer activated again by later events, the request context of each event, batches, and a failed delivery retried through the failure handler.
+- Hand-over tests: once the departing silo owns queues and holds messages of the streams the test produced to, a stopped silo releases them, and its queues' next owner delivers them well within the visibility timeout; a silo killed in process loses none, which return when their visibility ends. A mutation that skips the release fails the first.
 
 **EF flavour note**
 

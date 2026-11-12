@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Orleans.Configuration;
 using Orleans.Hosting;
 using Orleans.Serialization;
@@ -21,6 +22,7 @@ public static class StreamingCluster
     {
         var engine = database.Engine == "MariaDb" ? "MariaDb" : null;
         var builder = new InProcessTestClusterBuilder((short)silos);
+        builder.ConfigureHost(host => host.Logging.AddProvider(new WarningLog()));
         builder.ConfigureSilo((_, silo) =>
         {
             silo.Services.Configure<ExceptionSerializationOptions>(SerializeDriverExceptions);

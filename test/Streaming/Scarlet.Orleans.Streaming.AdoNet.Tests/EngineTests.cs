@@ -134,3 +134,15 @@ public sealed class MySqlStreamingModelTests(MySqlDatabaseFixture fixture) : Str
 public sealed class MySqlDataStreamingModelTests(MySqlDataDatabaseFixture fixture) : StreamingModelTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
 
 public sealed class MariaDbStreamingModelTests(MariaDbDatabaseFixture fixture) : StreamingModelTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
+public sealed class SqliteStreamQueueFaultTests(SqliteDatabaseFixture fixture) : StreamQueueFaultTests(fixture), IClassFixture<SqliteDatabaseFixture>;
+
+public sealed class PostgreSqlStreamQueueFaultTests(PostgreSqlDatabaseFixture fixture) : StreamQueueFaultTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerStreamQueueFaultTests(SqlServerDatabaseFixture fixture) : StreamQueueFaultTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlStreamQueueFaultTests(MySqlDatabaseFixture fixture) : StreamQueueFaultTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MySqlDataStreamQueueFaultTests(MySqlDataDatabaseFixture fixture) : StreamQueueFaultTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
+
+public sealed class MariaDbStreamQueueFaultTests(MariaDbDatabaseFixture fixture) : StreamQueueFaultTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
