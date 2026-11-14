@@ -205,9 +205,14 @@ public abstract class StreamingHandOverTests(DatabaseFixture fixture)
         fixture.Require();
         var database = await fixture.CreateDatabaseAsync();
         await using var cluster = await StreamingCluster.StartAsync(database, silos: 2, visibilityTimeout);
-        var leaving = cluster.Silos[1];
-        var factory = (RelationalQueueAdapterFactory)leaving.ServiceProvider.GetRequiredKeyedService<IQueueAdapterFactory>(StreamNamespaces.Provider);
-        var owned = await WaitForAsync(() => factory.OwnedQueues, queues => queues.Count > 0, "The departing silo never took a queue.", TimeSpan.FromSeconds(60));
+        // Orleans' default balancer assigns queues by position on the silo ring, which can leave one silo of two with
+        // none, so the silo to leave is the one that reads the most queues once every queue has a reader.
+        var factories = cluster.Silos.ToDictionary(
+            silo => silo,
+            silo => (RelationalQueueAdapterFactory)silo.ServiceProvider.GetRequiredKeyedService<IQueueAdapterFactory>(StreamNamespaces.Provider));
+        await WaitForAsync(() => factories.Values.Sum(f => f.OwnedQueues.Count), count => count == StreamingCluster.QueueCount, "The silos never took every queue.", TimeSpan.FromSeconds(60));
+        var (leaving, factory) = factories.MaxBy(f => f.Value.OwnedQueues.Count);
+        var owned = factory.OwnedQueues;
 
         // Only streams the departing silo reads, so every message the test waits for was held there.
         var mapper = factory.GetStreamQueueMapper();
