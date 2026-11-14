@@ -39,48 +39,12 @@ internal sealed class AdoNetTransactionalStateStore(DbDataSource dataSource, str
         }
     }
 
+    /// <summary>
+    /// A load is one statement on every engine but SQL Server, so it reads from one snapshot and takes no write lock:
+    /// on SQLite a transaction of two reads would begin immediately, queueing every load behind the single writer.
+    /// </summary>
     public Task<StoredTransactionalState?> LoadAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
-        engine switch
-        {
-            RelationalEngine.PostgreSql or RelationalEngine.MySql or RelationalEngine.MariaDb => LoadInOneStatementAsync(key, cancellationToken),
-            RelationalEngine.SqlServer => LoadSqlServerAsync(key, cancellationToken),
-            _ => LoadInTransactionAsync(key, cancellationToken),
-        };
-
-    private Task<StoredTransactionalState?> LoadInTransactionAsync(TransactionalStateKey key, CancellationToken cancellationToken) =>
-        InTransactionAsync(IsolationLevel.RepeatableRead, async (connection, transaction, ct) =>
-        {
-            byte[] identity, etag, metadata;
-            long committed;
-            await using (var select = Command(connection, transaction, TransactionsSql.SelectState))
-            {
-                TransactionsSql.AddKey(select, key);
-                await using var reader = await select.ExecuteReaderAsync(CommandBehavior.SingleRow, ct).ConfigureAwait(false);
-                if (!await reader.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    return (default(StoredTransactionalState), true);
-                }
-
-                identity = reader.GetFieldValue<byte[]>(0);
-                etag = reader.GetFieldValue<byte[]>(1);
-                committed = reader.GetInt64(2);
-                metadata = reader.GetFieldValue<byte[]>(3);
-            }
-
-            var entries = new List<StoredEntry>();
-            await using (var select = Command(connection, transaction, TransactionsSql.SelectEntries))
-            {
-                TransactionsSql.AddKey(select, key);
-                select.AddParameter("sequence_id", committed, DbType.Int64);
-                await using var reader = await select.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await reader.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    entries.Add(TransactionsSql.ReadEntry(reader));
-                }
-            }
-
-            return (new StoredTransactionalState(identity, etag, committed, metadata, entries), true);
-        }, cancellationToken);
+        engine == RelationalEngine.SqlServer ? LoadSqlServerAsync(key, cancellationToken) : LoadInOneStatementAsync(key, cancellationToken);
 
     public async Task<StoreResult> StoreAsync(TransactionalStateKey key, StoreRequest request, CancellationToken cancellationToken)
     {

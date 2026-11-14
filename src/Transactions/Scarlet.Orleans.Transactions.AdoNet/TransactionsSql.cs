@@ -32,11 +32,9 @@ internal static class TransactionsSql
         $"UPDATE {States} SET etag = @etag, metadata = @metadata, committed_sequence_id = @committed, modified_on = @modified_on " +
         "WHERE key_hash = @key_hash AND state_identity = @state_identity AND etag = @expected_etag";
 
-    public const string SelectState = $"SELECT state_identity, etag, committed_sequence_id, metadata FROM {States} WHERE key_hash = @key_hash";
-
     /// <summary>
     /// The state row and its entries from the committed one on, one row per entry, or one row with no entry columns. As
-    /// one statement, it reads from one snapshot on PostgreSQL, MySQL and MariaDB.
+    /// one statement, it reads from one snapshot on PostgreSQL, MySQL, MariaDB and SQLite.
     /// </summary>
     public const string SelectStateWithEntries =
         $"SELECT s.state_identity, s.etag, s.committed_sequence_id, s.metadata, e.sequence_id, e.transaction_id, e.timestamp_ticks, e.transaction_manager, e.payload " +
@@ -46,10 +44,6 @@ internal static class TransactionsSql
     public const string SelectIdentity = $"SELECT state_identity FROM {States} WHERE key_hash = @key_hash";
 
     public const string SelectCommitted = $"SELECT committed_sequence_id FROM {States} WHERE key_hash = @key_hash";
-
-    public const string SelectEntries =
-        $"SELECT sequence_id, transaction_id, timestamp_ticks, transaction_manager, payload FROM {Entries} " +
-        "WHERE key_hash = @key_hash AND sequence_id >= @sequence_id ORDER BY sequence_id";
 
     public const string CountEntry = $"SELECT COUNT(*) FROM {Entries} WHERE key_hash = @key_hash AND sequence_id = @sequence_id";
 
@@ -100,7 +94,7 @@ internal static class TransactionsSql
     }
 
     /// <summary>
-    /// Reads a row selected by <see cref="SelectEntries"/>.
+    /// Reads an entry row: sequence ID, transaction ID, timestamp, transaction manager and payload.
     /// </summary>
     public static StoredEntry ReadEntry(DbDataReader reader) =>
         new(
