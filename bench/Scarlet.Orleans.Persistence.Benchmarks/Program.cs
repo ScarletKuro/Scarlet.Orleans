@@ -120,9 +120,14 @@ internal static class Workloads
         var updates = await MeasureAsync(Operations, _ => storage.WriteStateAsync(StateName, updated, state));
         var reads = await MeasureAsync(Operations, _ => storage.ReadStateAsync(StateName, updated, new GrainState<BenchState>()));
 
+        // Synchronous SQLite calls need one pool thread per writer; otherwise queued writers can miss the window.
+        ThreadPool.GetMinThreads(out var workerThreads, out var completionThreads);
+        _ = ThreadPool.SetMinThreads(Math.Max(workerThreads, Writers), completionThreads);
         var latencies = new List<double>[Writers];
         var stop = Stopwatch.StartNew();
-        await Task.WhenAll(Enumerable.Range(0, Writers).Select(async writer =>
+        // SQLite operations can complete synchronously. Schedule each writer independently so the first one
+        // cannot consume the entire measurement window before the remaining writers are even started.
+        await Task.WhenAll(Enumerable.Range(0, Writers).Select(writer => Task.Run(async () =>
         {
             var own = new List<double>();
             latencies[writer] = own;
@@ -134,7 +139,12 @@ internal static class Workloads
                 await storage.WriteStateAsync(StateName, grain, writerState);
                 own.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             }
-        }));
+        })));
+        if (latencies.Any(samples => samples.Count == 0))
+        {
+            throw new InvalidOperationException("Not every concurrent writer participated in the measurement.");
+        }
+
         var concurrent = latencies.SelectMany(l => l).Order().ToArray();
 
         return new WorkloadResult(

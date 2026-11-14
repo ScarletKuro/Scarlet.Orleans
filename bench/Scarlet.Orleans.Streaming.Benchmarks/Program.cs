@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using Orleans;
 using Orleans.Configuration;
 using Orleans.Hosting;
@@ -19,7 +20,12 @@ foreach (var (name, variable) in new[] { ("PostgreSql", "SCARLET_TEST_POSTGRESQL
 {
     if (Environment.GetEnvironmentVariable(variable) is { Length: > 0 } admin)
     {
-        engines.Add(await Engine.CreateAsync(name, admin));
+        // Scarlet's data source and the in-box provider have separate pools. Bound both through the shared
+        // connection string so their combined connections fit PostgreSQL's default server limit of 100.
+        var connectionString = name == "PostgreSql"
+            ? new NpgsqlConnectionStringBuilder(admin) { MaxPoolSize = 40 }.ToString()
+            : admin;
+        engines.Add(await Engine.CreateAsync(name, connectionString));
     }
 }
 
@@ -100,7 +106,7 @@ internal static class Bench
     public const int Producers = 16;
     public static readonly TimeSpan Duration = TimeSpan.FromSeconds(10);
 
-    /// <summary>One event every 20 ms per producer: 800 events per second in all, below either provider's throughput.</summary>
+    /// <summary>One event every 20 ms per producer: a fixed offered load of 800 events per second in all.</summary>
     public static readonly TimeSpan PacedInterval = TimeSpan.FromMilliseconds(20);
     public static readonly TimeSpan DrainTimeout = TimeSpan.FromMinutes(2);
 

@@ -71,10 +71,11 @@ When a later package version needs a newer schema, its release notes give the ve
 
 A store is several statements in one transaction, each its own round trip, because EF Core has no way to send them as
 one batch without provider-specific SQL. `Scarlet.Orleans.Transactions.AdoNet` sends a store as one batch or command
-per engine, and on the same server database it is two to four times faster: in local benchmarks the EF Core flavour
-handled about a quarter of the ADO.NET flavour's transfers per second on PostgreSQL, and about half on SQL Server and
-MySQL. On SQLite, whose single writer limits both, they are close. Both write
-only what changed, a fifteenth to a twentieth of the bytes Orleans writes through grain storage. Choose this package
+per engine. In the [November 14 local runs](../../../bench/results/2026-11-14-transactions-local.md), the ADO.NET flavour
+handled 2.2 to 5.6 times as many spread transfers per second on the server engines: EF Core reached about a fifth of its
+throughput on PostgreSQL, a third on SQL Server, and under half on MySQL. SQLite results varied substantially between
+runs. Both dedicated stores wrote about a sixteenth to a nineteenth of the serialized payload measured through the
+wrapper on Scarlet persistence; these metrics do not measure physical database writes. Choose this package
 when your migrations and `DbContext` should own the Orleans tables, and the ADO.NET flavour when throughput matters;
 both use the same tables.
 

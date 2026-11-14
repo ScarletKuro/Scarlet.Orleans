@@ -137,6 +137,7 @@ internal static class Workloads
         await VerifyConservedAsync(provider, [Account(2), .. Enumerable.Range(0, Callers).Select(caller => Account(1000 + caller))]);
 
         var spread = await RunTransfersAsync(transactions, caller => (Account(100 + (2 * caller)), Account(101 + (2 * caller))));
+        await VerifyConservedAsync(provider, [.. Enumerable.Range(0, Callers * 2).Select(account => Account(100 + account))]);
 
         return new WorkloadResult(
             Percentile(samples, 0.5), Percentile(samples, 0.99), singleBytes,

@@ -1,0 +1,215 @@
+{
+  "campaign": "2026-11-14",
+  "timeZone": "Europe/Tallinn",
+  "environment": {
+    "baseRevision": "c9cde1522e1de7741cd9d9741047a78f9448d381",
+    "os": "Windows 11 Pro build 26300",
+    "cpu": "AMD Ryzen 7 5800X3D, 8 cores, 16 logical processors",
+    "physicalMemoryBytes": 68627877888,
+    "dockerMemoryGiB": 31.3,
+    "dotnetSdk": "11.0.100",
+    "dotnetRuntime": "10.0.15",
+    "orleans": "10.4.0",
+    "inBoxGrainDirectoryAndStreaming": "10.4.0-alpha.1",
+    "entityFrameworkCore": "10.0.14",
+    "sqlClient": "7.1.2",
+    "postgresql": "17.11",
+    "sqlServer": "2022 RTM-CU27-GDR, 16.0.4305.5",
+    "mySql": "8.4.13",
+    "idleMariaDb": "11.4.13",
+    "postgresSynchronousCommit": "on",
+    "postgresFsync": "on",
+    "postgresMaxConnections": 100,
+    "mySqlMaxConnections": 500,
+    "mySqlInnodbFlushLogAtTransactionCommit": 1,
+    "mySqlSyncBinlog": 1,
+    "endpoint": "127.0.0.1, local Docker Desktop port mappings",
+    "benchmarkConcurrency": "One benchmark executable at a time; engine and provider loops are sequential",
+    "scope": "Two runs of each of six standard suites; optional soak modes excluded",
+    "harnessCorrections": [
+      "Persistence schedules all writers through Task.Run with a pool minimum of at least 32, and verifies participation; two initial pre-fix runs are excluded and replaced at the end.",
+      "Clustering sequential timestamps start an hour in the past; concurrent heartbeat timestamps are verified. A pool minimum of at least 32 prevents synchronous SQLite calls from starving queued workers. Two failed pre-pool-fix attempts are excluded and replaced at the end.",
+      "Transactions verifies total conservation after spread transfers as well as hot transfers.",
+      "Streaming limits both PostgreSQL provider pools to 40 connections to fit the server's 100-connection limit; two unbudgeted attempts are excluded and replaced."
+    ],
+    "streamingHistoricalComparison": "Commit 9a12825 on 2026-11-14 measures paced latency from scheduled due time; November 12 paced results are not directly comparable."
+  },
+  "retainedInvocations": 12,
+  "excludedInvocations": 6,
+  "providerRunRows": 132,
+  "completeProviderRunRows": 128,
+  "concurrentErrors": 0,
+  "caughtTransferExceptionsInCompleteRows": 2,
+  "incompleteRows": [
+    {
+      "suite": "Transactions",
+      "run": 1,
+      "engine": "SqlServer",
+      "provider": "Wrapper on Orleans ADO.NET persistence"
+    },
+    {
+      "suite": "Streaming",
+      "run": 1,
+      "engine": "MySql",
+      "provider": "Orleans ADO.NET"
+    },
+    {
+      "suite": "Streaming",
+      "run": 2,
+      "engine": "SqlServer",
+      "provider": "Orleans ADO.NET"
+    },
+    {
+      "suite": "Streaming",
+      "run": 2,
+      "engine": "MySql",
+      "provider": "Orleans ADO.NET"
+    }
+  ],
+  "invocations": [
+    {
+      "suite": "Reminders",
+      "run": 1,
+      "startedAtUtc": "2026-11-14T20:57:30.170Z",
+      "finishedAtUtc": "2026-11-14T21:02:53.184Z",
+      "durationSeconds": 323,
+      "processExitCode": 0,
+      "providerRows": 11,
+      "incompleteRows": 0,
+      "report": "2026-11-14-reminders-local.md#run-1",
+      "tableSha256": "eb6d60966dc33757c72aede2fdf5021b9531b0423680f291a170001b1d6636d3"
+    },
+    {
+      "suite": "Reminders",
+      "run": 2,
+      "startedAtUtc": "2026-11-14T21:02:53.186Z",
+      "finishedAtUtc": "2026-11-14T21:08:15.418Z",
+      "durationSeconds": 322.2,
+      "processExitCode": 0,
+      "providerRows": 11,
+      "incompleteRows": 0,
+      "report": "2026-11-14-reminders-local.md#run-2",
+      "tableSha256": "320a3daae1f85d8ea0bb8418a78b49f68e00b6dc2d742af4b29e1269a92d7fc6"
+    },
+    {
+      "suite": "GrainDirectory",
+      "run": 1,
+      "startedAtUtc": "2026-11-14T21:08:15.421Z",
+      "finishedAtUtc": "2026-11-14T21:14:11.236Z",
+      "durationSeconds": 355.8,
+      "processExitCode": 0,
+      "providerRows": 11,
+      "incompleteRows": 0,
+      "report": "2026-11-14-grain-directory-local.md#run-1",
+      "tableSha256": "1a87af4285c184a6f9065da3a64283049caef962329c7bc68ea5f762e43cd06c"
+    },
+    {
+      "suite": "GrainDirectory",
+      "run": 2,
+      "startedAtUtc": "2026-11-14T21:14:11.238Z",
+      "finishedAtUtc": "2026-11-14T21:20:08.221Z",
+      "durationSeconds": 357,
+      "processExitCode": 0,
+      "providerRows": 11,
+      "incompleteRows": 0,
+      "report": "2026-11-14-grain-directory-local.md#run-2",
+      "tableSha256": "5cefd9afa842218421462981295d416bf2e9b59d2d9fe79144eace8823d62d55"
+    },
+    {
+      "suite": "Transactions",
+      "run": 1,
+      "startedAtUtc": "2026-11-14T21:20:42.629Z",
+      "finishedAtUtc": "2026-11-14T21:28:02.718Z",
+      "durationSeconds": 440.1,
+      "processExitCode": 0,
+      "providerRows": 15,
+      "incompleteRows": 1,
+      "report": "2026-11-14-transactions-local.md#run-1",
+      "tableSha256": "e1cc7ff4b36c66982921fe531c437357f0d935984eff8e90c694fb893fd40ddb"
+    },
+    {
+      "suite": "Transactions",
+      "run": 2,
+      "startedAtUtc": "2026-11-14T21:28:02.720Z",
+      "finishedAtUtc": "2026-11-14T21:34:34.195Z",
+      "durationSeconds": 391.5,
+      "processExitCode": 0,
+      "providerRows": 15,
+      "incompleteRows": 0,
+      "report": "2026-11-14-transactions-local.md#run-2",
+      "tableSha256": "8db6383d7e43575a6957f6e3aec57dc946903f3dee493df74accac503014dd74"
+    },
+    {
+      "suite": "Persistence",
+      "run": 1,
+      "startedAtUtc": "2026-11-14T21:41:29.994Z",
+      "finishedAtUtc": "2026-11-14T21:45:24.360Z",
+      "durationSeconds": 234.4,
+      "processExitCode": 0,
+      "providerRows": 11,
+      "incompleteRows": 0,
+      "report": "2026-11-14-persistence-local.md#run-1",
+      "tableSha256": "e12ed01a9320451f23459242d30c6a876946a7e7153e0b26f9ca7f7ed134c15a"
+    },
+    {
+      "suite": "Persistence",
+      "run": 2,
+      "startedAtUtc": "2026-11-14T21:45:24.370Z",
+      "finishedAtUtc": "2026-11-14T21:49:19.212Z",
+      "durationSeconds": 234.8,
+      "processExitCode": 0,
+      "providerRows": 11,
+      "incompleteRows": 0,
+      "report": "2026-11-14-persistence-local.md#run-2",
+      "tableSha256": "0d73ca4c9750205950d68f6b37b059689adb7c55fe8bc523738ce76bbe5784e2"
+    },
+    {
+      "suite": "Clustering",
+      "run": 1,
+      "startedAtUtc": "2026-11-14T21:49:22.476Z",
+      "finishedAtUtc": "2026-11-14T21:57:29.987Z",
+      "durationSeconds": 487.5,
+      "processExitCode": 0,
+      "providerRows": 11,
+      "incompleteRows": 0,
+      "report": "2026-11-14-clustering-local.md#run-1",
+      "tableSha256": "df4e2950f87fb6d0c680b815e0930ccd1e0abd939c91992f71bea248605327a2"
+    },
+    {
+      "suite": "Clustering",
+      "run": 2,
+      "startedAtUtc": "2026-11-14T21:57:29.997Z",
+      "finishedAtUtc": "2026-11-14T22:05:36.229Z",
+      "durationSeconds": 486.2,
+      "processExitCode": 0,
+      "providerRows": 11,
+      "incompleteRows": 0,
+      "report": "2026-11-14-clustering-local.md#run-2",
+      "tableSha256": "bad29561615e7299b04786039f4c55fb06300896a86b0cac4070dd5391ef56a5"
+    },
+    {
+      "suite": "Streaming",
+      "run": 1,
+      "startedAtUtc": "2026-11-14T22:05:43.871Z",
+      "finishedAtUtc": "2026-11-14T22:09:11.111Z",
+      "durationSeconds": 207.2,
+      "processExitCode": 0,
+      "providerRows": 7,
+      "incompleteRows": 1,
+      "report": "2026-11-14-streaming-local.md#run-1",
+      "tableSha256": "59a7c63fcc0b9c4367f6ce2f25fada79d0c9c2ac4005c19ef7a24e261379d558"
+    },
+    {
+      "suite": "Streaming",
+      "run": 2,
+      "startedAtUtc": "2026-11-14T22:09:11.121Z",
+      "finishedAtUtc": "2026-11-14T22:13:09.750Z",
+      "durationSeconds": 238.6,
+      "processExitCode": 0,
+      "providerRows": 7,
+      "incompleteRows": 2,
+      "report": "2026-11-14-streaming-local.md#run-2",
+      "tableSha256": "c648dba9c4584a0f023bd734c3a533e2822cca4a1c5d18dc094bec0148e3b3c6"
+    }
+  ]
+}

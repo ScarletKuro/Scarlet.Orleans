@@ -9,6 +9,8 @@ engine, on the same database, with the default Orleans serializer and a 1 KiB st
 
 Each provider runs 1,000 first writes (inserts), 1,000 updates of one grain and 1,000 reads, sequentially, after a
 warm-up, and then 32 concurrent writers updating their own grains for 10 seconds.
+The writers are scheduled independently, including when SQLite operations complete synchronously. The thread-pool
+minimum is at least the writer count, and every writer must participate for the measurement to be accepted.
 
 ## Running
 
@@ -98,6 +100,10 @@ Each provider inserts 100 silos, then runs 1,000 reads of the whole table, row r
 and one cleanup call removing 100 dead silos. Then 32 silos heartbeat for 10 seconds, and 32 silos read the table and
 update their own row with the next version for 10 seconds, counting successful updates and conflicts separately. Every
 write is checked, and the benchmark adds no retries.
+Sequential timestamps begin an hour in the past, so the concurrent heartbeats advance stored timestamps. An untimed
+read verifies that every concurrent heartbeat worker advanced its row.
+The thread-pool minimum is at least the worker count so synchronous SQLite calls cannot starve queued workers for the
+whole measurement window.
 
 ```sh
 dotnet run -c Release --project bench/Scarlet.Orleans.Clustering.Benchmarks -- clustering-results.md
@@ -129,8 +135,10 @@ Each provider runs three workloads:
 The report gives latency, throughput, aborted transactions, and the serialized bytes written, from the
 `scarlet.orleans.transactions.payload.size` and `scarlet.orleans.persistence.payload.size` metrics; the in-box
 persistence reports no such metric. **State copies per store**, the bytes per store over the state size, shows the
-pending depth directly: about one for the dedicated stores, which write each prepared version once, and the committed
-state plus every pending version for the wrapper. After the transfers, the accounts must still sum to zero.
+state-equivalent payload per store: about one for the dedicated stores, which write each prepared version once, and the
+committed state plus pending versions for the wrapper. Serialization overhead and metadata-only stores affect this
+ratio, so it is not an exact count of pending versions. The byte metrics measure serialized payload, rather than network
+traffic or database log writes. After both hot and spread transfers, the accounts must still sum to zero.
 
 ```sh
 dotnet run -c Release --project bench/Scarlet.Orleans.Transactions.Benchmarks -- transactions-results.md
@@ -141,6 +149,8 @@ dotnet run -c Release --project bench/Scarlet.Orleans.Transactions.Benchmarks --
 `Scarlet.Orleans.Streaming.Benchmarks` compares Scarlet's relational stream provider with the in-box
 `Microsoft.Orleans.Streaming.AdoNet` **10.4.0-alpha.1**, set up from its vendored v10.4.0 scripts, on PostgreSQL, SQL
 Server and MySQL, in one silo per engine with four queues each. SQLite runs Scarlet's alone.
+PostgreSQL gives each provider a maximum pool size of 40: their independent pools then fit within the server's default
+100-connection limit, including the paced workload's bursts.
 
 - **Enqueue**: 1,000 events sent one at a time from a client, timing each send.
 - **Delivery**: 16 client producers, each sending to its own stream for 10 seconds, read by one implicitly subscribed
@@ -159,6 +169,11 @@ dotnet run -c Release --project bench/Scarlet.Orleans.Streaming.Benchmarks -- st
 The workloads measure the provider and the round trip to the database, which dominates. Run client and database the way
 you deploy them before drawing conclusions about absolute numbers; compare providers within one run. Recorded runs are
 in `results/`.
+
+The [November 14–15 all-suite comparison](results/2026-11-14-local.md) contains two fresh runs of all six suites, revised
+conclusions, complete tables, and disclosed failures. It uses corrected SQLite writer scheduling and advancing
+membership heartbeats, plus an explicit PostgreSQL streaming connection budget. Use it for the current local
+comparison; the reports below retain the historical measurements and their original methodology.
 
 - [Persistence: local run, 2026-10-24](results/2026-10-24-local.md)
 - [Reminders: two local runs across all four engines, 2026-10-26](results/2026-10-26-reminders-local.md)

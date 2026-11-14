@@ -14,7 +14,9 @@ internal static class Workloads
     public const int Operations = 1000;
     public const int Writers = 32;
     public static readonly TimeSpan Throughput = TimeSpan.FromSeconds(10);
-    private static readonly DateTime Start = DateTime.UtcNow;
+    // Sequential operations advance timestamps by up to 2,000 seconds. Keep them in the past so the concurrent
+    // heartbeats below advance the stored value, rather than benchmarking rejected backwards timestamps.
+    private static readonly DateTime Start = DateTime.UtcNow.AddHours(-1);
 
     public static async Task<WorkloadResult> RunAsync(IMembershipTable table)
     {
@@ -59,6 +61,13 @@ internal static class Workloads
             await table.UpdateIAmAliveAsync(Entry(writer, DateTime.UtcNow));
             return true;
         });
+        var afterHeartbeats = await table.ReadAllAsync();
+        for (var writer = 0; writer < Writers; writer++)
+        {
+            Check(afterHeartbeats.Members.Single(m => m.Item1.SiloAddress.Equals(Address(writer))).Item1.IAmAliveTime
+                > Start.AddSeconds(Operations * 2), "concurrent heartbeat timestamp");
+        }
+
         var (_, updatesPerSecond, updateErrors, updateError, conflictsPerSecond) = await RunContendedAsync(table);
 
         return new WorkloadResult(Percentile(inserts, 0.5), Percentile(readAll, 0.5), Percentile(readAll, 0.99), Percentile(readRow, 0.5),
@@ -91,6 +100,10 @@ internal static class Workloads
     /// </summary>
     private static async Task<(double[] Latencies, double PerSecond, int Errors, string? FirstError)> RunConcurrentAsync(Func<int, Task<bool>> operation)
     {
+        // SQLite can block a worker in native code. Give every simulated silo a pool thread so queued silos are not
+        // starved for the entire measurement window while the first workers perform synchronous database calls.
+        ThreadPool.GetMinThreads(out var workerThreads, out var completionThreads);
+        _ = ThreadPool.SetMinThreads(Math.Max(workerThreads, Writers), completionThreads);
         var latencies = new List<double>[Writers];
         var failures = new int[Writers];
         var firstErrors = new string?[Writers];
