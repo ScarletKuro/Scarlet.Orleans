@@ -9,7 +9,7 @@ namespace Scarlet.Orleans.Streaming.AdoNet;
 
 /// <summary>
 /// The streaming SQL. Statements are standard and shared by every engine, except the dequeue, which needs each engine's
-/// own locking read (design section 5.6), and the bounds on eviction batches.
+/// own locking read (design section 5.6), SQL Server's receipt-write access path, and the bounds on eviction batches.
 /// </summary>
 internal static class StreamingSql
 {
@@ -122,10 +122,17 @@ internal static class StreamingSql
     };
 
     /// <summary>Deletes the messages whose receipts match (<see cref="ByReceipts"/>).</summary>
-    public static string ConfirmMessages(int count) => $"DELETE FROM {Messages} WHERE {ByReceipts(count)}";
+    public static string ConfirmMessages(RelationalEngine engine, int count) => $"DELETE FROM {Messages}{ReceiptFrom(engine)} WHERE {ByReceipts(count)}";
 
     /// <summary>Makes the messages whose receipts match visible now (<see cref="ByReceipts"/>).</summary>
-    public static string ReleaseMessages(int count) => $"UPDATE {Messages} SET visible_on = @now WHERE {ByReceipts(count)}";
+    public static string ReleaseMessages(RelationalEngine engine, int count) => $"UPDATE {Messages} SET visible_on = @now{ReceiptFrom(engine)} WHERE {ByReceipts(count)}";
+
+    // SQL Server can scan the global message-key index even with the ID prefilter. Concurrent confirmations of
+    // different queues then deadlock on that index's U/X locks. Read through the schema's clustered message-ID key;
+    // secondary indexes still receive their normal maintenance when rows change.
+    private static string ReceiptFrom(RelationalEngine engine) => engine == RelationalEngine.SqlServer
+        ? $" FROM {Messages} WITH (INDEX(pk_orleans_stream_message))"
+        : "";
 
     /// <summary>
     /// The messages whose receipts match. The ID list lets the engine seek the key for each message, and the receipts are

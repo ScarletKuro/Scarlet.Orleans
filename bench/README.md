@@ -23,6 +23,24 @@ dotnet run -c Release --project bench/Scarlet.Orleans.Persistence.Benchmarks -- 
 
 The table is printed and written to the given file.
 
+Transactions and streaming also accept `--engine Sqlite|PostgreSql|SqlServer|MySql` and `--provider` for focused
+investigations. Transaction provider names are the table labels (for example, `"Scarlet EF Core"`); streaming uses
+`scarlet` or `inbox`. A streaming run selecting only `scarlet` does not start the in-box queue receivers.
+
+Set `SCARLET_BENCH_DIAGNOSTICS=1` to print per-phase Scarlet operation durations, retry and message counters,
+thread-pool counts, and relevant warning/exception logs. Streaming also splits due-to-send, send-to-acknowledgement,
+and send-to-consumer timing. This instrumentation adds overhead; compare diagnostic runs with other diagnostic runs.
+Transaction reports always retain grouped caught exception counts and a first full exception for each group.
+`SCARLET_BENCH_CALLERS` overrides the transaction benchmark's default 16 callers for contention probes.
+
+```sh
+dotnet run -c Release --project bench/Scarlet.Orleans.Streaming.Benchmarks -- --engine SqlServer --provider scarlet streaming-focused.md
+dotnet run -c Release --project bench/Scarlet.Orleans.Transactions.Benchmarks -- --engine Sqlite --provider "Scarlet EF Core" transactions-focused.md
+```
+
+The [November 15 provider investigation](results/2026-11-15-provider-investigation.md) follows up on the SQL Server
+streaming tails and SQLite EF transaction exceptions in the full benchmark campaign.
+
 ## Reminder benchmarks
 
 `Scarlet.Orleans.Reminders.Benchmarks` compares the same three provider flavours through `IReminderTable`.

@@ -32,6 +32,9 @@ public static class Deliveries
     private static int phase;
     private static Dictionary<long, double> latencies = [];
     private static int duplicates;
+    private static readonly Dictionary<long, (long Due, long Started)> Starts = [];
+    private static readonly Dictionary<long, long> Acknowledged = [];
+    private static readonly Dictionary<long, long> Received = [];
 
     public static int Unique
     {
@@ -62,6 +65,9 @@ public static class Deliveries
         {
             latencies = [];
             duplicates = 0;
+            Starts.Clear();
+            Acknowledged.Clear();
+            Received.Clear();
             return ++phase;
         }
     }
@@ -80,6 +86,39 @@ public static class Deliveries
             {
                 duplicates++;
             }
+            else if (BenchmarkDiagnostics.Enabled) Received[e.Id] = Stopwatch.GetTimestamp();
+        }
+    }
+
+    public static void SendStarted(long id, long due)
+    {
+        if (!BenchmarkDiagnostics.Enabled) return;
+        lock (Gate) Starts[id] = (due, Stopwatch.GetTimestamp());
+    }
+
+    public static void SendAcknowledged(long id)
+    {
+        if (!BenchmarkDiagnostics.Enabled) return;
+        lock (Gate) Acknowledged[id] = Stopwatch.GetTimestamp();
+    }
+
+    public static void PrintSendTimings()
+    {
+        if (!BenchmarkDiagnostics.Enabled) return;
+        lock (Gate)
+        {
+            Print("due_to_send", Starts.Values.Select(x => Stopwatch.GetElapsedTime(x.Due, x.Started).TotalMilliseconds));
+            Print("send_to_ack", Starts.Where(x => Acknowledged.ContainsKey(x.Key)).Select(x => Stopwatch.GetElapsedTime(x.Value.Started, Acknowledged[x.Key]).TotalMilliseconds));
+            Print("send_to_delivery", Starts.Where(x => Received.ContainsKey(x.Key)).Select(x => Stopwatch.GetElapsedTime(x.Value.Started, Received[x.Key]).TotalMilliseconds));
+        }
+    }
+
+    private static void Print(string name, IEnumerable<double> samples)
+    {
+        var sorted = samples.Order().ToArray();
+        if (sorted.Length > 0)
+        {
+            Console.WriteLine(FormattableString.Invariant($"DIAGNOSTICS {name} n={sorted.Length} p50_ms={sorted[sorted.Length / 2]:0.00} p99_ms={sorted[Math.Min(sorted.Length - 1, (int)(sorted.Length * 0.99))]:0.00} max_ms={sorted[^1]:0.00}"));
         }
     }
 

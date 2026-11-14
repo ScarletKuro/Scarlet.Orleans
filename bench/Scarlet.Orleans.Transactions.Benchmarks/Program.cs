@@ -16,17 +16,22 @@ using Scarlet.Orleans.Transactions.Benchmarks;
 // stores, and Orleans' grain storage wrapper over Scarlet and over the in-box ADO.NET persistence. Server engines come
 // from the SCARLET_TEST_* administrative connection strings; SQLite always runs.
 var output = args.FirstOrDefault(a => a.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) ?? "transactions-results.md";
-var engines = new List<Engine> { Engine.Sqlite() };
+var engineFilter = BenchmarkDiagnostics.Argument(args, "--engine");
+var providerFilter = BenchmarkDiagnostics.Argument(args, "--provider");
+var engines = new List<Engine>();
+if (engineFilter is null || engineFilter.Equals("Sqlite", StringComparison.OrdinalIgnoreCase)) engines.Add(Engine.Sqlite());
 foreach (var (name, variable) in new[] { ("PostgreSql", "SCARLET_TEST_POSTGRESQL"), ("SqlServer", "SCARLET_TEST_SQLSERVER"), ("MySql", "SCARLET_TEST_MYSQL") })
 {
-    if (Environment.GetEnvironmentVariable(variable) is { Length: > 0 } admin)
+    if ((engineFilter is null || engineFilter.Equals(name, StringComparison.OrdinalIgnoreCase)) && Environment.GetEnvironmentVariable(variable) is { Length: > 0 } admin)
     {
         engines.Add(await Engine.CreateAsync(name, admin));
     }
 }
+if (engines.Count == 0) throw new ArgumentException("No configured benchmark engine matches --engine.");
 
 using var bytes = new ByteMeter();
 var failures = new List<string>();
+var transferFailures = new List<string>();
 var report = new StringBuilder()
     .AppendLine(CultureInfo.InvariantCulture, $"# Transactional state benchmarks, {DateTimeOffset.UtcNow:yyyy-MM-dd}")
     .AppendLine()
@@ -36,12 +41,14 @@ var report = new StringBuilder()
     .AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
 try
 {
+    if (!engines.Any(e => e.TransactionProviders.Any(p => providerFilter is null || p.Equals(providerFilter, StringComparison.OrdinalIgnoreCase))))
+        throw new ArgumentException("No configured provider matches --provider.");
     foreach (var engine in engines)
     {
         await engine.InstallInBoxSchemaAsync("Persistence");
         await using var cluster = engine.CreateCluster();
         await cluster.DeployAsync();
-        foreach (var provider in engine.TransactionProviders)
+        foreach (var provider in engine.TransactionProviders.Where(p => providerFilter is null || p.Equals(providerFilter, StringComparison.OrdinalIgnoreCase)))
         {
             Console.WriteLine($"{engine.Name} / {provider}...");
             WorkloadResult result;
@@ -59,10 +66,17 @@ try
 
             report.AppendLine(CultureInfo.InvariantCulture,
                 $"| {engine.Name} | {provider} | {result.SingleP50:0.00} | {result.SingleP99:0.00} | {Number(result.SingleBytes, "0")} | {result.HotPerSecond:0} | {result.HotP99:0.00} | {Number(result.HotBytes, "0")} | {Number(result.HotCopiesPerStore, "0.0")} | {result.SpreadPerSecond:0} | {result.SpreadP99:0.00} | {result.Aborted} |");
+            if (result.ErrorDetails is { } details) transferFailures.Add($"{engine.Name} / {provider}{Environment.NewLine}{details}");
         }
 
         // Preserve completed engines if a later setup or workload fails.
         await File.WriteAllTextAsync(output, report.ToString());
+    }
+
+    if (transferFailures.Count > 0)
+    {
+        report.AppendLine().AppendLine("## Transfer exceptions");
+        foreach (var detail in transferFailures) report.AppendLine().AppendLine("```text").AppendLine(detail).AppendLine("```");
     }
 
     if (failures.Count > 0)
@@ -73,9 +87,9 @@ try
             report.AppendLine(failure);
         }
 
-        await File.WriteAllTextAsync(output, report.ToString());
     }
 
+    await File.WriteAllTextAsync(output, report.ToString());
     Console.WriteLine(report);
 }
 finally
@@ -96,12 +110,13 @@ internal sealed class BenchDbContext(DbContextOptions<BenchDbContext> options) :
 internal sealed record WorkloadResult(
     double SingleP50, double SingleP99, double? SingleBytes,
     double HotPerSecond, double HotP99, double? HotBytes, double? HotCopiesPerStore,
-    double SpreadPerSecond, double SpreadP99, int Aborted);
+    double SpreadPerSecond, double SpreadP99, int Aborted, string? ErrorDetails);
 
 internal static class Workloads
 {
     public const int Sequential = 300;
-    public const int Callers = 16;
+    public static int Callers { get; } = Environment.GetEnvironmentVariable("SCARLET_BENCH_CALLERS") is { } callers
+        ? int.Parse(callers, CultureInfo.InvariantCulture) : 16;
     public static readonly TimeSpan Duration = TimeSpan.FromSeconds(10);
 
     public static async Task<WorkloadResult> RunAsync(IGrainFactory grains, ITransactionClient transactions, string provider, ByteMeter bytes)
@@ -131,18 +146,19 @@ internal static class Workloads
         }
 
         bytes.Reset();
-        var hot = await RunTransfersAsync(transactions, caller => (Account(1000 + caller), Account(2)));
+        var hot = await RunTransfersAsync(transactions, caller => (Account(1000 + caller), Account(2)), provider + " / hot");
         var hotBytes = bytes.PerTransaction(provider, hot.Count);
         var hotCopies = bytes.PerStore(provider) / Storages.StateSize;
         await VerifyConservedAsync(provider, [Account(2), .. Enumerable.Range(0, Callers).Select(caller => Account(1000 + caller))]);
 
-        var spread = await RunTransfersAsync(transactions, caller => (Account(100 + (2 * caller)), Account(101 + (2 * caller))));
+        var spread = await RunTransfersAsync(transactions, caller => (Account(100 + (2 * caller)), Account(101 + (2 * caller))), provider + " / spread");
         await VerifyConservedAsync(provider, [.. Enumerable.Range(0, Callers * 2).Select(account => Account(100 + account))]);
 
         return new WorkloadResult(
             Percentile(samples, 0.5), Percentile(samples, 0.99), singleBytes,
             hot.Count / hot.Elapsed.TotalSeconds, Percentile(hot.Latencies, 0.99), hotBytes, hotCopies,
-            spread.Count / spread.Elapsed.TotalSeconds, Percentile(spread.Latencies, 0.99), hot.Aborted + spread.Aborted);
+            spread.Count / spread.Elapsed.TotalSeconds, Percentile(spread.Latencies, 0.99), hot.Aborted + spread.Aborted,
+            hot.Errors is null && spread.Errors is null ? null : hot.Errors + Environment.NewLine + spread.Errors);
     }
 
     /// <summary>
@@ -150,9 +166,11 @@ internal static class Workloads
     /// accounts <paramref name="accounts"/> gives it, and times the transfers that commit. Aborted ones, which contention
     /// makes normal, are counted, and the benchmark adds no retries.
     /// </summary>
-    private static async Task<(int Count, double[] Latencies, int Aborted, TimeSpan Elapsed)> RunTransfersAsync(ITransactionClient transactions, Func<int, (IAccountGrain From, IAccountGrain To)> accounts)
+    private static async Task<(int Count, double[] Latencies, int Aborted, TimeSpan Elapsed, string? Errors)> RunTransfersAsync(ITransactionClient transactions, Func<int, (IAccountGrain From, IAccountGrain To)> accounts, string context)
     {
+        using var diagnostics = BenchmarkDiagnostics.Phase(context);
         var latencies = new ConcurrentBag<double>();
+        var errors = new ConcurrentDictionary<string, (int Count, Exception First)>();
         var aborted = 0;
         var stop = Stopwatch.StartNew();
         await Task.WhenAll(Enumerable.Range(0, Callers).Select(caller => Task.Run(async () =>
@@ -166,9 +184,11 @@ internal static class Workloads
                     await transactions.RunTransaction(TransactionOption.Create, () => Task.WhenAll(from.ChangeAsync(-1), to.ChangeAsync(1)));
                     latencies.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                 }
-                catch (Exception)
+                catch (Exception exception)
                 {
                     Interlocked.Increment(ref aborted);
+                    var key = exception.GetType().FullName + " / " + exception.GetBaseException().GetType().FullName;
+                    errors.AddOrUpdate(key, (1, exception), (_, prior) => (prior.Count + 1, prior.First));
                 }
             }
         })));
@@ -176,7 +196,9 @@ internal static class Workloads
         // the time until the last one finished.
         var elapsed = stop.Elapsed;
         var sorted = latencies.Order().ToArray();
-        return (sorted.Length, sorted, aborted, elapsed);
+        var details = errors.IsEmpty ? null : string.Join(Environment.NewLine, errors.Select(p => $"{context}: {p.Key}, count={p.Value.Count}{Environment.NewLine}{p.Value.First}"));
+        if (details is not null) Console.Error.WriteLine(details);
+        return (sorted.Length, sorted, aborted, elapsed, details);
     }
 
     /// <summary>
@@ -253,7 +275,7 @@ internal sealed partial class Engine
     public InProcessTestCluster CreateCluster()
     {
         var builder = new InProcessTestClusterBuilder(1);
-        builder.ConfigureHost(host => host.Logging.SetMinimumLevel(LogLevel.Warning));
+        builder.ConfigureHost(host => host.Logging.SetMinimumLevel(LogLevel.Warning).AddProvider(new BenchmarkWarningLog()));
         builder.ConfigureSilo((siloOptions, silo) =>
         {
             silo.UseTransactions();

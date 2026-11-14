@@ -106,10 +106,10 @@ internal sealed class AdoNetStreamQueueStore(DbDataSource dataSource, string? en
     }
 
     public Task<int> ConfirmAsync(StreamQueueKey queue, IReadOnlyList<MessageReceipt> receipts, CancellationToken cancellationToken) =>
-        ForEachChunkAsync(queue, receipts, StreamingSql.ConfirmMessages, now: null, cancellationToken);
+        ForEachChunkAsync(queue, receipts, count => StreamingSql.ConfirmMessages(engine, count), now: null, cancellationToken);
 
     public Task<int> ReleaseAsync(StreamQueueKey queue, IReadOnlyList<MessageReceipt> receipts, DateTimeOffset now, CancellationToken cancellationToken) =>
-        ForEachChunkAsync(queue, receipts, StreamingSql.ReleaseMessages, now, cancellationToken);
+        ForEachChunkAsync(queue, receipts, count => StreamingSql.ReleaseMessages(engine, count), now, cancellationToken);
 
     public async Task<FailOutcome> FailAsync(StreamQueueKey queue, MessageReceipt receipt, int maxAttempts, DateTimeOffset now, DateTimeOffset removeOn, CancellationToken cancellationToken)
     {

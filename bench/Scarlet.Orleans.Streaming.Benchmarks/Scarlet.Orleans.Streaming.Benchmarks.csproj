@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\Engine.cs" Link="Engine.cs" />
+    <Compile Include="..\Shared\BenchmarkDiagnostics.cs" Link="BenchmarkDiagnostics.cs" />
     <None Include="..\Scarlet.Orleans.Persistence.Benchmarks\InBoxScripts\*-Main.sql" Link="InBoxScripts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Update="InBoxScripts\*.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

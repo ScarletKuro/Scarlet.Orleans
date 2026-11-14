@@ -15,10 +15,13 @@ using Scarlet.Orleans.Streaming.Benchmarks;
 // Microsoft.Orleans.Streaming.AdoNet on the server engines. Server engines come from the SCARLET_TEST_* administrative
 // connection strings; SQLite always runs.
 var output = args.FirstOrDefault(a => a.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) ?? "streaming-results.md";
-var engines = new List<Engine> { Engine.Sqlite() };
+var engineFilter = BenchmarkDiagnostics.Argument(args, "--engine");
+var providerFilter = BenchmarkDiagnostics.Argument(args, "--provider");
+var engines = new List<Engine>();
+if (engineFilter is null || engineFilter.Equals("Sqlite", StringComparison.OrdinalIgnoreCase)) engines.Add(Engine.Sqlite());
 foreach (var (name, variable) in new[] { ("PostgreSql", "SCARLET_TEST_POSTGRESQL"), ("SqlServer", "SCARLET_TEST_SQLSERVER"), ("MySql", "SCARLET_TEST_MYSQL") })
 {
-    if (Environment.GetEnvironmentVariable(variable) is { Length: > 0 } admin)
+    if ((engineFilter is null || engineFilter.Equals(name, StringComparison.OrdinalIgnoreCase)) && Environment.GetEnvironmentVariable(variable) is { Length: > 0 } admin)
     {
         // Scarlet's data source and the in-box provider have separate pools. Bound both through the shared
         // connection string so their combined connections fit PostgreSQL's default server limit of 100.
@@ -28,6 +31,7 @@ foreach (var (name, variable) in new[] { ("PostgreSql", "SCARLET_TEST_POSTGRESQL
         engines.Add(await Engine.CreateAsync(name, connectionString));
     }
 }
+if (engines.Count == 0) throw new ArgumentException("No configured benchmark engine matches --engine.");
 
 var failures = new List<string>();
 var report = new StringBuilder()
@@ -39,9 +43,11 @@ var report = new StringBuilder()
     .AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
 try
 {
+    if (!engines.Any(e => Bench.ProvidersOf(e).Any(p => providerFilter is null || p.Equals(providerFilter, StringComparison.OrdinalIgnoreCase))))
+        throw new ArgumentException("No configured provider matches --provider.");
     foreach (var engine in engines)
     {
-        var providers = Bench.ProvidersOf(engine);
+        IReadOnlyList<string> providers = Bench.ProvidersOf(engine).Where(p => providerFilter is null || p.Equals(providerFilter, StringComparison.OrdinalIgnoreCase)).ToArray();
         try
         {
             await engine.InstallInBoxSchemaAsync("Streaming");
@@ -118,6 +124,7 @@ internal static class Bench
         var space = Providers.Namespace(provider);
 
         // Warm up: activate a consumer and the queues' readers.
+        using var warmupDiagnostics = BenchmarkDiagnostics.Phase(provider + " / whole run");
         var phase = Deliveries.Begin();
         await streams.GetStream<BenchEvent>(StreamId.Create(space, Guid.NewGuid())).OnNextAsync(new(phase, 0, Stopwatch.GetTimestamp()));
         await DrainAsync(1);
@@ -150,6 +157,7 @@ internal static class Bench
     /// </summary>
     private static async Task<(int Sent, double SentPerSecond, double PerSecond, double P50, double P99, int Duplicates)> DeliverAsync(IStreamProvider streams, string space, TimeSpan? pace)
     {
+        using var diagnostics = BenchmarkDiagnostics.Phase(space + (pace is null ? " / unpaced" : " / paced"));
         var phase = Deliveries.Begin();
         var next = -1L;
         var start = Stopwatch.GetTimestamp();
@@ -161,7 +169,7 @@ internal static class Bench
             {
                 while (!stop.IsCancellationRequested)
                 {
-                    await stream.OnNextAsync(new(phase, Interlocked.Increment(ref next), Stopwatch.GetTimestamp()));
+                    await SendAsync(stream, new(phase, Interlocked.Increment(ref next), Stopwatch.GetTimestamp()));
                 }
 
                 return;
@@ -186,7 +194,7 @@ internal static class Bench
 
                 var id = Interlocked.Increment(ref next);
                 var dueAt = start + (long)(due.TotalSeconds * Stopwatch.Frequency);
-                sends.Add(Task.Run(() => stream.OnNextAsync(new(phase, id, dueAt))));
+                sends.Add(Task.Run(() => SendAsync(stream, new(phase, id, dueAt))));
             }
 
             await Task.WhenAll(sends);
@@ -197,13 +205,21 @@ internal static class Bench
         await DrainAsync(sent);
         var elapsed = Stopwatch.GetElapsedTime(start);
         var latencies = Deliveries.Latencies();
+        Deliveries.PrintSendTimings();
         return (sent, sent / sending.TotalSeconds, latencies.Length / elapsed.TotalSeconds, Percentile(latencies, 0.5), Percentile(latencies, 0.99), Deliveries.Duplicates);
+    }
+
+    private static async Task SendAsync(IAsyncStream<BenchEvent> stream, BenchEvent value)
+    {
+        Deliveries.SendStarted(value.Id, value.SentAt);
+        await stream.OnNextAsync(value);
+        Deliveries.SendAcknowledged(value.Id);
     }
 
     public static InProcessTestCluster CreateCluster(Engine engine, bool withInBox)
     {
         var builder = new InProcessTestClusterBuilder(1);
-        builder.ConfigureHost(host => host.Logging.SetMinimumLevel(LogLevel.Warning));
+        builder.ConfigureHost(host => host.Logging.SetMinimumLevel(LogLevel.Warning).AddProvider(new BenchmarkWarningLog()));
         builder.ConfigureSilo((_, silo) =>
         {
             silo.AddScarletAdoNetGrainStorage("PubSubStore", options =>
