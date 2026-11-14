@@ -27,7 +27,7 @@ var failures = new List<string>();
 var report = new StringBuilder()
     .AppendLine(CultureInfo.InvariantCulture, $"# Streaming benchmarks, {DateTimeOffset.UtcNow:yyyy-MM-dd}")
     .AppendLine()
-    .AppendLine(CultureInfo.InvariantCulture, $"{Environment.ProcessorCount} logical processors, .NET {Environment.Version}, {Bench.QueueCount} queues per provider. Enqueue: {Bench.Sequential} events sent one at a time from a client. Delivery: {Bench.Producers} client producers, each sending to its own stream for {Bench.Duration.TotalSeconds:0} s as fast as they can, read by one implicitly subscribed consumer grain per stream; throughput counts deliveries over the time from the first send to the last delivery, and latency runs from send to consumer. Faster enqueues mean more load, so the paced run offers one event every {Bench.PacedInterval.TotalMilliseconds:0} ms per producer ({Bench.Producers * 1000 / (int)Bench.PacedInterval.TotalMilliseconds} events per second), sending without waiting for earlier sends, and compares latency at that load; its sent rate shows whether the provider took it. Each event is counted once; further deliveries of it are duplicates. Latencies in milliseconds. Every event must be delivered within {Bench.DrainTimeout.TotalSeconds:0} s of the last send, or the run is incomplete; deliveries beyond the events sent are duplicates.")
+    .AppendLine(CultureInfo.InvariantCulture, $"{Environment.ProcessorCount} logical processors, .NET {Environment.Version}, {Bench.QueueCount} queues per provider. Enqueue: {Bench.Sequential} events sent one at a time from a client. Delivery: {Bench.Producers} client producers, each sending to its own stream for {Bench.Duration.TotalSeconds:0} s as fast as they can, read by one implicitly subscribed consumer grain per stream; throughput counts deliveries over the time from the first send to the last delivery, and latency runs from send to consumer. Faster enqueues mean more load, so the paced run offers one event every {Bench.PacedInterval.TotalMilliseconds:0} ms per producer ({Bench.Producers * 1000 / (int)Bench.PacedInterval.TotalMilliseconds} events per second), sending without waiting for earlier sends, and compares latency at that load, measured from when each event was due; its sent rate, the events over the time until the last send completed, shows whether the provider took it. Each event is counted once; further deliveries of it are duplicates. Latencies in milliseconds. Every event must be delivered within {Bench.DrainTimeout.TotalSeconds:0} s of the last send, or the run is incomplete; deliveries beyond the events sent are duplicates.")
     .AppendLine()
     .AppendLine("| Engine | Provider | Enqueue p50 | Enqueue p99 | Sent | Delivered/s | Delivery p50 | Delivery p99 | Paced sent/s | Paced p50 | Paced p99 | Duplicates |")
     .AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
@@ -134,7 +134,7 @@ internal static class Bench
         var paced = await DeliverAsync(streams, space, PacedInterval);
         return new(
             Percentile(enqueue, 0.5), Percentile(enqueue, 0.99), flat.Sent, flat.PerSecond, flat.P50, flat.P99,
-            paced.Sent / Duration.TotalSeconds, paced.P50, paced.P99, duplicates + flat.Duplicates + paced.Duplicates);
+            paced.SentPerSecond, paced.P50, paced.P99, duplicates + flat.Duplicates + paced.Duplicates);
     }
 
     /// <summary>
@@ -142,7 +142,7 @@ internal static class Bench
     /// complete, or, paced, one event every <paramref name="pace"/> without waiting for the previous send, so that a slow
     /// enqueue does not lower the load offered.
     /// </summary>
-    private static async Task<(int Sent, double PerSecond, double P50, double P99, int Duplicates)> DeliverAsync(IStreamProvider streams, string space, TimeSpan? pace)
+    private static async Task<(int Sent, double SentPerSecond, double PerSecond, double P50, double P99, int Duplicates)> DeliverAsync(IStreamProvider streams, string space, TimeSpan? pace)
     {
         var phase = Deliveries.Begin();
         var next = -1L;
@@ -163,7 +163,7 @@ internal static class Bench
 
             // Each send is due at a fixed offset from the start, and a late loop catches up, so the rate holds however
             // coarse the timer. Sends run on the thread pool, since a driver whose async calls run synchronously, such as
-            // SQLite's, would block the loop.
+            // SQLite's, would block the loop. An event's latency runs from when it was due, so time it waited to be sent counts.
             var sends = new List<Task>();
             for (var i = 0; ; i++)
             {
@@ -179,17 +179,19 @@ internal static class Bench
                 }
 
                 var id = Interlocked.Increment(ref next);
-                sends.Add(Task.Run(() => stream.OnNextAsync(new(phase, id, Stopwatch.GetTimestamp()))));
+                var dueAt = start + (long)(due.TotalSeconds * Stopwatch.Frequency);
+                sends.Add(Task.Run(() => stream.OnNextAsync(new(phase, id, dueAt))));
             }
 
             await Task.WhenAll(sends);
         })));
 
         var sent = (int)Interlocked.Read(ref next) + 1;
+        var sending = Stopwatch.GetElapsedTime(start);
         await DrainAsync(sent);
         var elapsed = Stopwatch.GetElapsedTime(start);
         var latencies = Deliveries.Latencies();
-        return (sent, latencies.Length / elapsed.TotalSeconds, Percentile(latencies, 0.5), Percentile(latencies, 0.99), Deliveries.Duplicates);
+        return (sent, sent / sending.TotalSeconds, latencies.Length / elapsed.TotalSeconds, Percentile(latencies, 0.5), Percentile(latencies, 0.99), Deliveries.Duplicates);
     }
 
     public static InProcessTestCluster CreateCluster(Engine engine, bool withInBox)
