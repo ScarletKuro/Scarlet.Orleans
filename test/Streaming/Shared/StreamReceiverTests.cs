@@ -165,6 +165,27 @@ public abstract class StreamReceiverTests(DatabaseFixture fixture) : IAsyncLifet
     }
 
     [Fact]
+    public async Task ReadCancelledAfterItsDequeue_WithADisposedSerializer_LeavesTheMessagesReadable()
+    {
+        var services = new ServiceCollection().AddSerializer().BuildServiceProvider();
+        var disposed = services.GetRequiredService<Serializer>();
+        await services.DisposeAsync();
+        var (adapter, _) = await CreateAsync();
+        await EnqueueAsync(adapter, "a", "b");
+        using var cancelled = new CancellationTokenSource();
+        var intercepting = new InterceptingStore(store) { BeforeDequeue = cancelled.CancelAsync };
+        var stopping = new RelationalQueueAdapterFactory(provider, "service", intercepting, disposed, options, new HashRingStreamQueueMapperOptions { TotalQueueCount = 1 }, new SimpleQueueCacheOptions(), time, NullLoggerFactory.Instance);
+        await stopping.CreateAdapter(CancellationToken);
+        var receiver = stopping.CreateReceiver(SingleQueue(stopping));
+
+        Assert.Empty(await receiver.GetQueueMessagesAsync(100, cancelled.Token));
+        await receiver.Shutdown(TimeSpan.FromSeconds(30), cancelled.Token);
+
+        var (_, next) = await CreateAsync();
+        Assert.Equal(["a", "b"], Events(await ReadAsync(next)));
+    }
+
+    [Fact]
     public async Task ReadWithADisposedSerializer_LosesNoMessage()
     {
         var services = new ServiceCollection().AddSerializer().BuildServiceProvider();

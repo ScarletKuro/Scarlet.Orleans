@@ -102,11 +102,25 @@ internal sealed partial class RelationalQueueAdapterReceiver(
                 {
                     // A failed attempt, not proof of a corrupt payload: a stopping silo disposes the serializer under a
                     // read in progress, which fails valid messages too. The message is visible again at once, for this or
-                    // the next owner, and goes to the dead letters only when it fails its last attempt.
-                    var outcome = await observer.ObserveAsync("fail", queue, () =>
-                        store.FailAsync(queue, message.ToReceipt(), options.MaxAttempts, now, now + options.DeadLetterRetention, cancellationToken)).ConfigureAwait(false);
-                    LogUnreadableMessage(exception, message.MessageId, queue, outcome);
-                    observer.Count(outcome switch { FailOutcome.Retried => "retried", FailOutcome.DeadLettered => "dead_lettered", _ => "stale" }, 1);
+                    // the next owner, and goes to the dead letters only when it fails its last attempt. Like the dequeue,
+                    // this runs whether or not the read was cancelled, so that every dequeued message is accounted for:
+                    // failed here, or, if that fails too, held for shutdown to release.
+                    try
+                    {
+                        var outcome = await observer.ObserveAsync("fail", queue, () =>
+                            store.FailAsync(queue, message.ToReceipt(), options.MaxAttempts, now, now + options.DeadLetterRetention, CancellationToken.None)).ConfigureAwait(false);
+                        LogUnreadableMessage(exception, message.MessageId, queue, outcome);
+                        observer.Count(outcome switch { FailOutcome.Retried => "retried", FailOutcome.DeadLettered => "dead_lettered", _ => "stale" }, 1);
+                    }
+                    catch (Exception failure)
+                    {
+                        LogUnreadableMessageHeld(failure, message.MessageId, queue);
+                        lock (pendingLock)
+                        {
+                            pending[message.MessageId] = new(message.Receipt, message.ExpiresOn, positions.Add(queue, message.ToReceipt()));
+                        }
+                    }
+
                     continue;
                 }
 
@@ -317,6 +331,9 @@ internal sealed partial class RelationalQueueAdapterReceiver(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Message {MessageId} of stream queue {Queue} could not be deserialized; its attempt failed ({Outcome}).")]
     private partial void LogUnreadableMessage(Exception exception, long messageId, StreamQueueKey queue, FailOutcome outcome);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Message {MessageId} of stream queue {Queue} could not be deserialized, and failing its attempt failed; it is held until shutdown releases it or its visibility timeout ends.")]
+    private partial void LogUnreadableMessageHeld(Exception exception, long messageId, StreamQueueKey queue);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Stream queue {Queue} did not finish its reads before the shutdown timeout; its held messages reappear after their visibility timeout.")]
     private partial void LogShutdownTimedOut(StreamQueueKey queue);
