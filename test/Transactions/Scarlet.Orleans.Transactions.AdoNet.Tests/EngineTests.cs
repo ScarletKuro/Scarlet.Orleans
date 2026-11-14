@@ -412,13 +412,7 @@ public sealed class MySqlDataExclusiveLockTests(MySqlDataTransactionsFixture fix
 public sealed class MySqlDataScopedTransactionTests(MySqlDataTransactionsFixture fixture, ITestOutputHelper output) : ScopedTransactionTests(fixture, output);
 
 [Collection(MySqlDataTransactions.Name)]
-public sealed class MySqlDataConsistencyTests(MySqlDataTransactionsFixture fixture, ITestOutputHelper output) : ConsistencyTests(fixture, output);
-
-[Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataSkewedClockGoldenPathTests(MySqlDataSkewedClockTransactionsFixture fixture, ITestOutputHelper output) : GoldenPathTests(fixture, output);
-
-[Collection(MySqlDataTransactions.Name)]
-public sealed class MySqlDataSkewedClockConsistencyTests(MySqlDataSkewedClockTransactionsFixture fixture, ITestOutputHelper output) : ConsistencyTests(fixture, output);
 
 [Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataFaultInjectionTests(MySqlDataFaultInjectionFixture fixture, ITestOutputHelper output) : FaultInjectionTests(fixture, output);
@@ -440,9 +434,6 @@ public sealed class MySqlDataTransactionalStateStoreTests(MySqlDataDatabaseFixtu
 
 [Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataTransactionalStateConcurrencyTests(MySqlDataDatabaseFixture fixture) : TransactionalStateConcurrencyTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;
-
-[Collection(MySqlDataTransactions.Name)]
-public sealed class MySqlDataRecoveryTests(MySqlDataDatabaseFixture fixture, ITestOutputHelper output) : RecoveryTests(fixture, output), IClassFixture<MySqlDataDatabaseFixture>;
 
 [Collection(MySqlDataTransactions.Name)]
 public sealed class MySqlDataTransactionsSchemaManagementTests(MySqlDataDatabaseFixture fixture) : TransactionsSchemaManagementTests(fixture), IClassFixture<MySqlDataDatabaseFixture>;

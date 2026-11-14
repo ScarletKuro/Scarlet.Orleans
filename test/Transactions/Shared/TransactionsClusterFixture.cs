@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Hosting;
 using Orleans.Serialization;
@@ -45,6 +46,7 @@ public abstract class TransactionsClusterFixture(DatabaseFixture database, bool 
         }
 
         var builder = new InProcessTestClusterBuilder(1);
+        builder.ConfigureHost(host => host.Logging.AddProvider(new WarningLog()));
         builder.ConfigureSilo((_, silo) =>
         {
             silo.Services.AddKeyedSingleton<IRemoteCommitService, RemoteCommitService>(TransactionTestConstants.RemoteCommitService);

@@ -1,10 +1,11 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 
-namespace Scarlet.Orleans.Streaming.Tests;
+namespace Scarlet.Orleans.Tests;
 
 /// <summary>
-/// Collects the warnings and errors the provider logs in the test clusters, which run in this process, so that a test
+/// Collects the warnings and errors that the providers, and Orleans' streaming and transactions, log in the test
+/// clusters, which run in this process, so that a test
 /// can show them when it fails.
 /// </summary>
 public sealed class WarningLog : ILoggerProvider
@@ -24,7 +25,7 @@ public sealed class WarningLog : ILoggerProvider
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
 
-        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning && (category.StartsWith("Scarlet.", StringComparison.Ordinal) || category.StartsWith("Orleans.Stream", StringComparison.Ordinal));
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning && (category.StartsWith("Scarlet.", StringComparison.Ordinal) || category.StartsWith("Orleans.Stream", StringComparison.Ordinal) || category.StartsWith("Orleans.Transactions", StringComparison.Ordinal));
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {

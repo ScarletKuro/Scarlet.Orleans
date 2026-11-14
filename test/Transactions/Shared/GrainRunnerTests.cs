@@ -31,8 +31,22 @@ public abstract class ScopedTransactionTests(TransactionsClusterFixture fixture,
 /// <c>SCARLET_TEST_CONSISTENCY</c> is <c>1</c>, as upstream runs it nightly.
 /// </summary>
 public abstract class ConsistencyTests(TransactionsClusterFixture fixture, ITestOutputHelper output)
-    : ConsistencyTransactionTestRunnerxUnit(RequireOptIn(fixture), output)
+    : ConsistencyTransactionTestRunnerxUnit(RequireOptIn(fixture), output), IDisposable
 {
+    /// <summary>
+    /// The runner reports a failed workload without the storage or Orleans error behind it, so a failed test also
+    /// prints the cluster's recent warnings.
+    /// </summary>
+    public void Dispose()
+    {
+        if (TestContext.Current.TestState?.Result == TestResult.Failed)
+        {
+            TestContext.Current.TestOutputHelper?.WriteLine($"Cluster warnings:{Environment.NewLine}{WarningLog.Recent}");
+        }
+
+        GC.SuppressFinalize(this);
+    }
+
     // Every store is one database transaction with no size limit, and no faults are injected.
     protected override bool StorageAdaptorHasLimitedCommitSpace => false;
 

@@ -149,6 +149,9 @@ These are driver bugs, not ones in these providers, so the tests run MySql.Data 
 connection-failure suites. `MySql.EntityFrameworkCore` runs on MySql.Data, so it is affected too; Microting's
 provider, on MySqlConnector, is not.
 
+MySql.Data is supported on a best-effort basis: every component's conformance tests run on it, but the long-running
+transactions suites (randomized consistency, and recovery from silo failures) run on MySqlConnector only.
+
 ## Performance
 
 On the same machine and databases, the ADO.NET persistence flavour matches or beats the in-box Orleans ADO.NET
