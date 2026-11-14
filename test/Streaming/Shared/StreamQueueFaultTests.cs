@@ -12,6 +12,9 @@ public abstract class StreamQueueFaultTests(DatabaseFixture fixture)
 
     private static readonly TimeSpan Visibility = TimeSpan.FromSeconds(2);
 
+    /// <summary>With one response in twenty dropped, twenty failures in a row mean something else is wrong.</summary>
+    private const int MaxEnqueueAttempts = 20;
+
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -40,18 +43,22 @@ public abstract class StreamQueueFaultTests(DatabaseFixture fixture)
             while (!stop.IsCancellationRequested)
             {
                 var key = Guid.NewGuid();
-                while (true)
+                for (var attempt = 1; ; attempt++)
                 {
                     try
                     {
                         var now = DateTimeOffset.UtcNow;
-                        await store.EnqueueAsync(queue, key, key.ToByteArray(), now, now.AddMinutes(10), CancellationToken.None);
+                        await store.EnqueueAsync(queue, key, key.ToByteArray(), now, now.AddMinutes(10), CancellationToken);
                         enqueued.Add(key);
                         break;
                     }
-                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    catch (Exception exception) when (exception is not OperationCanceledException && attempt < MaxEnqueueAttempts)
                     {
                         Interlocked.Increment(ref failures);
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        throw new InvalidOperationException($"An enqueue still failed after {MaxEnqueueAttempts} attempts, more than dropped responses explain.", exception);
                     }
                 }
             }
