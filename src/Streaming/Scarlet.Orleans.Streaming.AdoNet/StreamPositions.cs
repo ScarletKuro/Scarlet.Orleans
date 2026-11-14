@@ -29,6 +29,9 @@ internal sealed class StreamPositions
 
     public void Remove(long position) => attempts.TryRemove(position, out _);
 
+    /// <summary>The positions that still resolve to an attempt.</summary>
+    public int Count => attempts.Count;
+
     /// <param name="Queue">The queue the message is in.</param>
     /// <param name="Receipt">The message and the receipt of this attempt.</param>
     internal readonly record struct Attempt(StreamQueueKey Queue, MessageReceipt Receipt);

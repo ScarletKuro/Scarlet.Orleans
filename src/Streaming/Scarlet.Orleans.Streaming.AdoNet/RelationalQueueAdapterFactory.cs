@@ -64,6 +64,9 @@ internal sealed class RelationalQueueAdapterFactory : IQueueAdapterFactory
     /// <summary>The queues this silo reads now: those whose receiver it created and has not shut down.</summary>
     public IReadOnlyCollection<QueueId> OwnedQueues => [.. receivers.Keys];
 
+    /// <summary>The cache positions that still resolve to an attempt; none outlive the attempts held.</summary>
+    public int LivePositions => positions.Count;
+
     /// <summary>Messages this silo's receivers hold, dequeued and not yet confirmed or released.</summary>
     public int HeldMessages => receivers.Values.Sum(static r => r.HeldMessages);
 

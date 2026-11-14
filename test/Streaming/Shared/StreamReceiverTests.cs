@@ -186,6 +186,31 @@ public abstract class StreamReceiverTests(DatabaseFixture fixture) : IAsyncLifet
     }
 
     [Fact]
+    public async Task UnreadableMessage_WhoseAttemptsCannotBeFailed_IsHeldOnce_AndReleasedAtShutdown()
+    {
+        var services = new ServiceCollection().AddSerializer().BuildServiceProvider();
+        var disposed = services.GetRequiredService<Serializer>();
+        await services.DisposeAsync();
+        var (adapter, _) = await CreateAsync();
+        await EnqueueAsync(adapter, "a");
+        var intercepting = new InterceptingStore(store) { BeforeFail = () => throw new InvalidOperationException("Unreachable.") };
+        var stopping = new RelationalQueueAdapterFactory(provider, "service", intercepting, disposed, options, new HashRingStreamQueueMapperOptions { TotalQueueCount = 1 }, new SimpleQueueCacheOptions(), time, NullLoggerFactory.Instance);
+        await stopping.CreateAdapter(CancellationToken);
+        var receiver = stopping.CreateReceiver(SingleQueue(stopping));
+
+        Assert.Empty(await ReadAsync(receiver));
+        time.Advance(options.VisibilityTimeout);
+        Assert.Empty(await ReadAsync(receiver));
+
+        Assert.Equal(1, stopping.HeldMessages);
+        Assert.Equal(1, stopping.LivePositions);
+        await receiver.Shutdown(TimeSpan.FromSeconds(30), CancellationToken);
+        Assert.Equal(0, stopping.LivePositions);
+        var (_, next) = await CreateAsync();
+        Assert.Equal(["a"], Events(await ReadAsync(next)));
+    }
+
+    [Fact]
     public async Task ReadWithADisposedSerializer_LosesNoMessage()
     {
         var services = new ServiceCollection().AddSerializer().BuildServiceProvider();
@@ -422,6 +447,8 @@ public abstract class StreamReceiverTests(DatabaseFixture fixture) : IAsyncLifet
 
         public Func<Task>? BeforeConfirm { get; set; }
 
+        public Func<Task>? BeforeFail { get; set; }
+
         public async Task RegisterQueueAsync(StreamQueueKey queue, DateTimeOffset now, DateTimeOffset evictOn, CancellationToken cancellationToken)
         {
             await (BeforeRegister?.Invoke() ?? Task.CompletedTask);
@@ -448,8 +475,11 @@ public abstract class StreamReceiverTests(DatabaseFixture fixture) : IAsyncLifet
         public Task<int> ReleaseAsync(StreamQueueKey queue, IReadOnlyList<MessageReceipt> receipts, DateTimeOffset now, CancellationToken cancellationToken) =>
             inner.ReleaseAsync(queue, receipts, now, cancellationToken);
 
-        public Task<FailOutcome> FailAsync(StreamQueueKey queue, MessageReceipt receipt, int maxAttempts, DateTimeOffset now, DateTimeOffset removeOn, CancellationToken cancellationToken) =>
-            inner.FailAsync(queue, receipt, maxAttempts, now, removeOn, cancellationToken);
+        public async Task<FailOutcome> FailAsync(StreamQueueKey queue, MessageReceipt receipt, int maxAttempts, DateTimeOffset now, DateTimeOffset removeOn, CancellationToken cancellationToken)
+        {
+            await (BeforeFail?.Invoke() ?? Task.CompletedTask);
+            return await inner.FailAsync(queue, receipt, maxAttempts, now, removeOn, cancellationToken);
+        }
 
         public Task<bool> TryClaimEvictionAsync(StreamQueueKey queue, DateTimeOffset now, DateTimeOffset next, CancellationToken cancellationToken) =>
             inner.TryClaimEvictionAsync(queue, now, next, cancellationToken);

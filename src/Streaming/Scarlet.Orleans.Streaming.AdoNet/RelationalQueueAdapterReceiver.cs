@@ -111,31 +111,18 @@ internal sealed partial class RelationalQueueAdapterReceiver(
                             store.FailAsync(queue, message.ToReceipt(), options.MaxAttempts, now, now + options.DeadLetterRetention, CancellationToken.None)).ConfigureAwait(false);
                         LogUnreadableMessage(exception, message.MessageId, queue, outcome);
                         observer.Count(outcome switch { FailOutcome.Retried => "retried", FailOutcome.DeadLettered => "dead_lettered", _ => "stale" }, 1);
+                        Forget(message.MessageId);
                     }
                     catch (Exception failure)
                     {
                         LogUnreadableMessageHeld(failure, message.MessageId, queue);
-                        lock (pendingLock)
-                        {
-                            pending[message.MessageId] = new(message.Receipt, message.ExpiresOn, positions.Add(queue, message.ToReceipt()));
-                        }
+                        Hold(message);
                     }
 
                     continue;
                 }
 
-                lock (pendingLock)
-                {
-                    if (pending.TryGetValue(message.MessageId, out var previous))
-                    {
-                        positions.Remove(previous.Position);
-                    }
-
-                    var position = positions.Add(queue, message.ToReceipt());
-                    pending[message.MessageId] = new(message.Receipt, message.ExpiresOn, position);
-                    batch.Position = new EventSequenceTokenV2(position);
-                }
-
+                batch.Position = new EventSequenceTokenV2(Hold(message));
                 batches.Add(batch);
             }
 
@@ -305,6 +292,37 @@ internal sealed partial class RelationalQueueAdapterReceiver(
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             LogEvictionFailed(exception, queue);
+        }
+    }
+
+    /// <summary>
+    /// Holds this attempt of a message under a new position, which it returns, in place of any earlier attempt, whose
+    /// position then resolves to nothing.
+    /// </summary>
+    private long Hold(DequeuedMessage message)
+    {
+        lock (pendingLock)
+        {
+            if (pending.TryGetValue(message.MessageId, out var previous))
+            {
+                positions.Remove(previous.Position);
+            }
+
+            var position = positions.Add(queue, message.ToReceipt());
+            pending[message.MessageId] = new(message.Receipt, message.ExpiresOn, position);
+            return position;
+        }
+    }
+
+    /// <summary>Stops holding a message whose latest attempt was failed, with the position of any earlier attempt.</summary>
+    private void Forget(long messageId)
+    {
+        lock (pendingLock)
+        {
+            if (pending.Remove(messageId, out var previous))
+            {
+                positions.Remove(previous.Position);
+            }
         }
     }
 
