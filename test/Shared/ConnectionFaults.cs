@@ -5,6 +5,13 @@ using Npgsql;
 
 namespace Scarlet.Orleans.Tests;
 
+/// <summary>Destructive connection tests run without other collections sharing the server or driver pools.</summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class ConnectionFaultTestDefinition
+{
+    public const string Name = "Connection faults";
+}
+
 /// <summary>
 /// Real connection failures for failure tests: sessions killed by the database, and connections routed through a
 /// <see cref="ChaosProxy"/>.
@@ -60,6 +67,7 @@ public static class ConnectionFaults
     /// </summary>
     public static async Task<int> KillSessionsAsync(TestDatabase database, CancellationToken stop)
     {
+        DatabaseDiagnostics.Record("kill.begin", database.Engine, database.Name);
         var killed = 0;
         while (!stop.IsCancellationRequested)
         {
@@ -67,8 +75,9 @@ public static class ConnectionFaults
             {
                 killed += await KillOnceAsync(database);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                DatabaseDiagnostics.Record("kill.error", database.Engine, database.Name, exception.ToString());
                 // The killer's own connection may come from a pool another kill just broke, and a session it listed can end
                 // before it is killed. Either way that session is gone, as the test wants.
             }
@@ -76,6 +85,7 @@ public static class ConnectionFaults
             await Task.Delay(KillInterval, CancellationToken.None);
         }
 
+        DatabaseDiagnostics.Record("kill.end", database.Engine, database.Name, $"killed={killed}");
         return killed;
     }
 
@@ -96,9 +106,15 @@ public static class ConnectionFaults
                     FROM sys.dm_exec_sessions
                     WHERE database_id = DB_ID() AND session_id <> @@SPID AND is_user_process = 1;
                     EXEC (@kill);
-                    SELECT @count;
+                    SELECT @count, @kill;
                     """;
-                return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+                await using (var reader = await command.ExecuteReaderAsync())
+                {
+                    await reader.ReadAsync();
+                    var count = reader.GetInt32(0);
+                    if (count > 0) DatabaseDiagnostics.Record("kill.targets", database.Engine, database.Name, reader.GetString(1));
+                    return count;
+                }
 
             case "MySql" or "MariaDb":
                 command.CommandText = "SELECT id FROM information_schema.processlist WHERE db = DATABASE() AND id <> CONNECTION_ID()";

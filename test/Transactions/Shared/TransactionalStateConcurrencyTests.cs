@@ -9,6 +9,7 @@ namespace Scarlet.Orleans.Transactions.Tests;
 /// either commit the pending version or prepare the next one. Every payload is its sequence number, so a load that mixed
 /// two stores, or a store applied in part, shows as a committed number without its entry, or a version out of place.
 /// </summary>
+[Collection(ConnectionFaultTestDefinition.Name)]
 public abstract class TransactionalStateConcurrencyTests(DatabaseFixture fixture)
 {
     private static readonly TimeSpan Duration = TimeSpan.FromSeconds(4);

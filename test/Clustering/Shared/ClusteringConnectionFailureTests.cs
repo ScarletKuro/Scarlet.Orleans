@@ -15,6 +15,7 @@ namespace Scarlet.Orleans.Clustering.Tests;
 /// does. Since every versioned write changes exactly one row, the table is atomic only if afterwards the zones are
 /// distinct and the largest is the table version, and every acknowledged write is still there.
 /// </remarks>
+[Collection(ConnectionFaultTestDefinition.Name)]
 public abstract class ClusteringConnectionFailureTests(DatabaseFixture fixture)
 {
     private const int Writers = 8;

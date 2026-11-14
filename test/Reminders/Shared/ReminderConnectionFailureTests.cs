@@ -13,6 +13,7 @@ namespace Scarlet.Orleans.Reminders.Tests;
 /// unknown outcome, so afterwards the stored start time must be one that was written, no older than the last
 /// acknowledged one, in exactly one row.
 /// </remarks>
+[Collection(ConnectionFaultTestDefinition.Name)]
 public abstract class ReminderConnectionFailureTests(DatabaseFixture fixture)
 {
     private const string ReminderName = "failure";

@@ -35,7 +35,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet build Scarlet.Orleans.slnx -c $CONFIGURATION
-      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --no-build
+      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --no-build --report-xunit-trx
       - name: Preserve failed test diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -44,6 +44,7 @@ jobs:
           path: |
             test/**/test-logs/**
             test/**/TestResults/**
+            TestResults/**
           if-no-files-found: ignore
       - run: dotnet pack Scarlet.Orleans.slnx -c $CONFIGURATION --no-build -o artifacts
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -82,7 +83,7 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.x
-      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1
+      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1 --report-xunit-trx
       - name: Preserve failed test diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -91,6 +92,7 @@ jobs:
           path: |
             test/**/test-logs/**
             test/**/TestResults/**
+            TestResults/**
           if-no-files-found: ignore
 
   sqlserver:
@@ -125,7 +127,10 @@ jobs:
       # The images ship different sqlcmd paths across versions, so readiness is read from the server log instead.
       - name: Wait for SQL Server
         run: timeout 120 bash -c 'until docker logs "${{ job.services.db.id }}" 2>&1 | grep -q "SQL Server is now ready for client connections"; do sleep 2; done'
-      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1
+      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1 --report-xunit-trx
+      - name: Capture SQL Server diagnostics
+        if: failure()
+        run: bash .github/scripts/capture-sqlserver-diagnostics.sh "${{ job.services.db.id }}"
       - name: Preserve failed test diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -134,6 +139,8 @@ jobs:
           path: |
             test/**/test-logs/**
             test/**/TestResults/**
+            TestResults/**
+            artifacts/sqlserver-diagnostics/**
           if-no-files-found: ignore
 
   mysql:
@@ -164,7 +171,7 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.x
-      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1
+      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1 --report-xunit-trx
       - name: Preserve failed test diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -173,6 +180,7 @@ jobs:
           path: |
             test/**/test-logs/**
             test/**/TestResults/**
+            TestResults/**
           if-no-files-found: ignore
 
   mariadb:
@@ -204,7 +212,7 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.x
-      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1
+      - run: dotnet test --solution Scarlet.Orleans.slnx -c $CONFIGURATION --max-parallel-test-modules 1 --report-xunit-trx
       - name: Preserve failed test diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -213,6 +221,7 @@ jobs:
           path: |
             test/**/test-logs/**
             test/**/TestResults/**
+            TestResults/**
           if-no-files-found: ignore
 
   native-aot:

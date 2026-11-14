@@ -19,12 +19,25 @@ public sealed class TestDatabase(string engine, string driver, string connection
 
     public string ConnectionString { get; } = connectionString;
 
+    /// <summary>The database identity, without server credentials, for fault-test correlation.</summary>
+    public string Name { get; } = DatabaseDiagnostics.DatabaseName(connectionString, engine);
+
     public DbDataSource DataSource { get; } = dataSource;
 
     public async ValueTask DisposeAsync()
     {
-        await DataSource.DisposeAsync();
-        await drop();
+        DatabaseDiagnostics.Record("drop.begin", Engine, Name);
+        try
+        {
+            await DataSource.DisposeAsync();
+            await drop();
+            DatabaseDiagnostics.Record("drop.end", Engine, Name);
+        }
+        catch (Exception exception)
+        {
+            DatabaseDiagnostics.Record("drop.error", Engine, Name, exception.ToString());
+            throw;
+        }
     }
 }
 
@@ -104,6 +117,7 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
     {
         Require();
         var name = $"scarlet_{Guid.NewGuid():N}"[..20];
+        DatabaseDiagnostics.Record("create.begin", Engine, name);
         var created = Engine switch
         {
             "Sqlite" => CreateSqlite(name),
@@ -117,6 +131,7 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
         };
 
         databases.Add(created);
+        DatabaseDiagnostics.Record("create.end", Engine, name);
         return created;
     }
 
@@ -239,6 +254,39 @@ public abstract class DatabaseFixture(string engine, string driver = TestDrivers
         // on hosts with slow fsync, such as Docker Desktop.
         command.CommandTimeout = 300;
         await command.ExecuteNonQueryAsync();
+    }
+}
+
+/// <summary>Small, timestamped audit of database lifetimes and deliberate faults; never writes connection strings.</summary>
+public static class DatabaseDiagnostics
+{
+    private static readonly Lock Gate = new();
+    private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "test-logs", $"database-{Environment.ProcessId}.log");
+
+    public static string DatabaseName(string connectionString, string engine)
+    {
+        var builder = new DbConnectionStringBuilder { ConnectionString = connectionString };
+        foreach (var key in engine == "Sqlite" ? new[] { "Data Source" } : ["Database", "Initial Catalog"])
+            if (builder.TryGetValue(key, out var value)) return Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "unknown";
+        return "unknown";
+    }
+
+    public static void Record(string operation, string engine, string database, string details = "")
+    {
+        var test = TestContext.Current.Test?.TestDisplayName ?? "fixture";
+        var line = $"{DateTimeOffset.UtcNow:O}\t{operation}\t{engine}\t{database}\t{test}\t{details.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal)}{Environment.NewLine}";
+        try
+        {
+            lock (Gate)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+                File.AppendAllText(LogPath, line);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Could not write database diagnostics: {exception.Message}");
+        }
     }
 }
 

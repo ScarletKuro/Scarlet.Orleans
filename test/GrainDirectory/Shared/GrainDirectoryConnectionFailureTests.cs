@@ -12,6 +12,7 @@ namespace Scarlet.Orleans.GrainDirectory.Tests;
 /// has an unknown outcome; the next registration finds out what is stored, as a silo does. Afterwards each grain must hold
 /// an entry its writer registered, and must hold one if any registration was acknowledged.
 /// </remarks>
+[Collection(ConnectionFaultTestDefinition.Name)]
 public abstract class GrainDirectoryConnectionFailureTests(DatabaseFixture fixture)
 {
     private const int Writers = 8;

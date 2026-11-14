@@ -13,6 +13,7 @@ namespace Scarlet.Orleans.Persistence.Tests;
 /// Each writer writes increasing values to its own grain. A write that fails with any error other than a conflict has an
 /// unknown outcome; the writer then resynchronises from storage, as a grain does after reactivation.
 /// </remarks>
+[Collection(ConnectionFaultTestDefinition.Name)]
 public abstract class ConnectionFailureTests(DatabaseFixture fixture)
 {
     private const string StateName = "state";
