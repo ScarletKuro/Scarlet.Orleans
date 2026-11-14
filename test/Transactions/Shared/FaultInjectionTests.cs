@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Orleans.Hosting;
 using Orleans.Runtime;
+using Orleans.Transactions;
 using Orleans.Transactions.Abstractions;
 using Orleans.Transactions.TestKit;
 using Orleans.Transactions.TestKit.xUnit;
@@ -29,7 +30,9 @@ public abstract class FaultInjectionFixture(DatabaseFixture database) : Transact
         silo.Services.AddKeyedSingleton<ITransactionalStateStorageFactory>(name, (services, _) =>
             new FaultInjectingStorageFactory(services.GetRequiredKeyedService<ITransactionalStateStorageFactory>(InnerName)));
         silo.UseControlledFaultInjectionTransactionState();
-        silo.Services.AddScoped<IControlledTransactionFaultInjector, StorageFaultInjector>();
+        silo.Services.AddTransient<IFaultInjectionTransactionalStateFactory, TargetedStateFactory>();
+        silo.Services.AddScoped<StorageFaultInjector>();
+        silo.Services.AddScoped<IControlledTransactionFaultInjector>(services => services.GetRequiredService<StorageFaultInjector>());
         silo.Services.AddScoped<ITransactionFaultInjector>(services => services.GetRequiredService<IControlledTransactionFaultInjector>());
     }
 
@@ -37,19 +40,71 @@ public abstract class FaultInjectionFixture(DatabaseFixture database) : Transact
     {
         public ITransactionalStateStorage<TState> Create<TState>(string stateName, IGrainContext context)
             where TState : class, new() =>
-            new FaultInjectingStorage<TState>(inner.Create<TState>(stateName, context), context.ActivationServices.GetRequiredService<ITransactionFaultInjector>());
+            new FaultInjectingStorage<TState>(inner.Create<TState>(stateName, context), context.ActivationServices.GetRequiredService<StorageFaultInjector>());
     }
 
-    private sealed class FaultInjectingStorage<TState>(ITransactionalStateStorage<TState> inner, ITransactionFaultInjector injector) : ITransactionalStateStorage<TState>
+    // The TestKit's transaction-scoped injector interface is internal. Capture the target from its public state facet
+    // before the protocol consumes FaultInjectionControl, so a previous transaction's cleanup cannot take its fault.
+    private sealed class TargetedStateFactory(IGrainContextAccessor accessor) : IFaultInjectionTransactionalStateFactory
+    {
+        public IFaultInjectionTransactionalState<TState> Create<TState>(IFaultInjectionTransactionalStateConfiguration config)
+            where TState : class, new() =>
+            new TargetedState<TState>(new FaultInjectionTransactionalStateFactory(accessor).Create<TState>(config),
+                accessor.GrainContext.ActivationServices.GetRequiredService<StorageFaultInjector>());
+    }
+
+    private sealed class TargetedState<TState>(IFaultInjectionTransactionalState<TState> inner, StorageFaultInjector injector)
+        : IFaultInjectionTransactionalState<TState> where TState : class, new()
+    {
+        public FaultInjectionControl FaultInjectionControl { get => inner.FaultInjectionControl; set => inner.FaultInjectionControl = value; }
+
+        public Task<TResult> PerformRead<TResult>(Func<TState, TResult> readFunction) => inner.PerformRead(readFunction);
+
+        public Task<TResult> PerformUpdate<TResult>(Func<TState, TResult> updateFunction)
+        {
+            injector.TargetTransactionId = FaultInjectionControl.FaultInjectionPhase == TransactionFaultInjectPhase.BeforePrepareAndCommit
+                ? Guid.Parse(TransactionContext.CurrentTransactionId)
+                : null;
+            return inner.PerformUpdate(updateFunction);
+        }
+    }
+
+    internal sealed class FaultInjectingStorage<TState>(ITransactionalStateStorage<TState> inner, StorageFaultInjector injector) : ITransactionalStateStorage<TState>
         where TState : class, new()
     {
         public Task<TransactionalStorageLoadResponse<TState>> Load() => inner.Load();
 
         public async Task<string> Store(string? expectedETag, TransactionalStateMetaData metadata, List<PendingTransactionState<TState>>? statesToPrepare, long? commitUpTo, long? abortAfter)
         {
-            injector.BeforeStore();
+            var isTarget = injector.TargetTransactionId is not { } target
+                || metadata.CommitRecords.ContainsKey(target)
+                || statesToPrepare?.Any(state => state.TransactionId == target.ToString()) == true;
+            // Consume at entry, before awaiting the database. A store already in flight when a fault is armed must
+            // neither throw it on completion nor clear a fault armed for a later store.
+            var before = isTarget && injector.InjectBeforeStore;
+            var after = isTarget && injector.InjectAfterStore;
+            var genericAfter = isTarget && injector.InjectGenericAfterStore;
+            if (isTarget)
+            {
+                injector.InjectBeforeStore = injector.InjectAfterStore = injector.InjectGenericAfterStore = false;
+            }
+
+            if (before)
+            {
+                throw new InjectedStorageException("Storage failure injected before the store.");
+            }
+
             var etag = await inner.Store(expectedETag, metadata, statesToPrepare, commitUpTo, abortAfter);
-            injector.AfterStore();
+            if (after)
+            {
+                throw new InjectedStorageException("Storage failure injected after the store committed.");
+            }
+
+            if (genericAfter)
+            {
+                throw new InvalidOperationException("Generic storage failure injected after the store committed.");
+            }
+
             return etag;
         }
     }
@@ -58,31 +113,19 @@ public abstract class FaultInjectionFixture(DatabaseFixture database) : Transact
     /// Fails the next store once when armed: before it reaches the database, or after it committed, so the grain does
     /// not learn that it did.
     /// </summary>
-    private sealed class StorageFaultInjector : IControlledTransactionFaultInjector
+    internal sealed class StorageFaultInjector : IControlledTransactionFaultInjector
     {
+        public Guid? TargetTransactionId { get; set; }
+
         public bool InjectBeforeStore { get; set; }
 
         public bool InjectAfterStore { get; set; }
 
         public bool InjectGenericAfterStore { get; set; }
 
-        public void BeforeStore()
-        {
-            if (InjectBeforeStore)
-            {
-                InjectBeforeStore = false;
-                throw new InjectedStorageException("Storage failure injected before the store.");
-            }
-        }
+        public void BeforeStore() => throw new NotSupportedException("Faults must be consumed by the targeted storage wrapper.");
 
-        public void AfterStore()
-        {
-            if (InjectAfterStore || InjectGenericAfterStore)
-            {
-                InjectAfterStore = InjectGenericAfterStore = false;
-                throw new InjectedStorageException("Storage failure injected after the store committed.");
-            }
-        }
+        public void AfterStore() => throw new NotSupportedException("Faults must be consumed by the targeted storage wrapper.");
     }
 }
 

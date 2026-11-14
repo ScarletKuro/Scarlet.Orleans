@@ -597,6 +597,8 @@ internal static class GrainStorageModelBasedConformance
 
         public Type? ExceptionType { get; }
 
+        public Exception? Exception { get; private init; }
+
         public string? ETag { get; }
 
         public bool RecordExists { get; }
@@ -610,14 +612,14 @@ internal static class GrainStorageModelBasedConformance
 
         public static StorageOperationResult Failure(Exception exception, string? etag, bool recordExists, int value)
         {
-            return new StorageOperationResult(false, GetExceptionType(exception), etag, recordExists, value);
+            return new StorageOperationResult(false, GetExceptionType(exception), etag, recordExists, value) { Exception = exception };
         }
 
         public override string ToString()
         {
             return Succeeded
                 ? $"success etag={ETag ?? "<null>"} exists={RecordExists} value={Value}"
-                : $"failure exception={ExceptionType?.FullName ?? "<null>"} etag={ETag ?? "<null>"} exists={RecordExists} value={Value}";
+                : $"failure exception={ExceptionType?.FullName ?? "<null>"} etag={ETag ?? "<null>"} exists={RecordExists} value={Value}{Environment.NewLine}{Exception}";
         }
     }
 
