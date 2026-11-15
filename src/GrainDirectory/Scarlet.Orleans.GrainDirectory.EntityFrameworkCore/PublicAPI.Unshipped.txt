@@ -1,0 +1,19 @@
+#nullable enable
+Microsoft.EntityFrameworkCore.ScarletGrainDirectoryModelBuilderExtensions
+Orleans.Hosting.ScarletEntityFrameworkCoreGrainDirectoryExtensions
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions.InitStage.get -> int
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions.InitStage.set -> void
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions.IsDuplicateKeyError.get -> System.Func<System.Data.Common.DbException!, bool>?
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions.IsDuplicateKeyError.set -> void
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions.ScarletEntityFrameworkCoreGrainDirectoryOptions() -> void
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions.SchemaMode.get -> Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions.SchemaMode.set -> void
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.SchemaMode.None = 0 -> Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.SchemaMode.Validate = 1 -> Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.SchemaMode
+static Microsoft.EntityFrameworkCore.ScarletGrainDirectoryModelBuilderExtensions.ApplyOrleansGrainDirectoryModel(this Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder) -> Microsoft.EntityFrameworkCore.ModelBuilder!
+static Microsoft.EntityFrameworkCore.ScarletGrainDirectoryModelBuilderExtensions.ApplyOrleansGrainDirectorySchema(this Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder! migrationBuilder, int version) -> Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder!
+static Orleans.Hosting.ScarletEntityFrameworkCoreGrainDirectoryExtensions.AddScarletEntityFrameworkCoreGrainDirectory<TContext>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Orleans.Hosting.ScarletEntityFrameworkCoreGrainDirectoryExtensions.AddScarletEntityFrameworkCoreGrainDirectory<TContext>(this Orleans.Hosting.ISiloBuilder! builder, string! name, System.Action<Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!
+static Orleans.Hosting.ScarletEntityFrameworkCoreGrainDirectoryExtensions.UseScarletEntityFrameworkCoreGrainDirectoryAsDefault<TContext>(this Orleans.Hosting.ISiloBuilder! builder, System.Action<Scarlet.Orleans.GrainDirectory.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainDirectoryOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!

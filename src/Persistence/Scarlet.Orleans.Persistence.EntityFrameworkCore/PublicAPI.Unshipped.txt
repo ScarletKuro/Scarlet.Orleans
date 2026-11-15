@@ -1,0 +1,25 @@
+#nullable enable
+Microsoft.EntityFrameworkCore.ScarletPersistenceModelBuilderExtensions
+Orleans.Hosting.ScarletEntityFrameworkCoreGrainStorageExtensions
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.DeleteStateOnClear.get -> bool
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.DeleteStateOnClear.set -> void
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.GrainStorageSerializer.get -> Orleans.Storage.IGrainStorageSerializer!
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.GrainStorageSerializer.set -> void
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.InitStage.get -> int
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.InitStage.set -> void
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.IsDuplicateKeyError.get -> System.Func<System.Data.Common.DbException!, bool>?
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.IsDuplicateKeyError.set -> void
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.MaxPayloadSize.get -> int?
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.MaxPayloadSize.set -> void
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.ScarletEntityFrameworkCoreGrainStorageOptions() -> void
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.SchemaMode.get -> Scarlet.Orleans.Persistence.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions.SchemaMode.set -> void
+Scarlet.Orleans.Persistence.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.Persistence.EntityFrameworkCore.SchemaMode.None = 0 -> Scarlet.Orleans.Persistence.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.Persistence.EntityFrameworkCore.SchemaMode.Validate = 1 -> Scarlet.Orleans.Persistence.EntityFrameworkCore.SchemaMode
+static Microsoft.EntityFrameworkCore.ScarletPersistenceModelBuilderExtensions.ApplyOrleansPersistenceModel(this Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder) -> Microsoft.EntityFrameworkCore.ModelBuilder!
+static Microsoft.EntityFrameworkCore.ScarletPersistenceModelBuilderExtensions.ApplyOrleansPersistenceSchema(this Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder! migrationBuilder, int version) -> Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder!
+static Orleans.Hosting.ScarletEntityFrameworkCoreGrainStorageExtensions.AddScarletEntityFrameworkCoreGrainStorage<TContext>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Orleans.Hosting.ScarletEntityFrameworkCoreGrainStorageExtensions.AddScarletEntityFrameworkCoreGrainStorage<TContext>(this Orleans.Hosting.ISiloBuilder! builder, string! name, System.Action<Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!
+static Orleans.Hosting.ScarletEntityFrameworkCoreGrainStorageExtensions.AddScarletEntityFrameworkCoreGrainStorageAsDefault<TContext>(this Orleans.Hosting.ISiloBuilder! builder, System.Action<Scarlet.Orleans.Persistence.EntityFrameworkCore.ScarletEntityFrameworkCoreGrainStorageOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!

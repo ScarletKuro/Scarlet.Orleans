@@ -1,0 +1,30 @@
+#nullable enable
+Orleans.Hosting.ScarletAdoNetStreamExtensions
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.DataSource.get -> System.Data.Common.DbDataSource?
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.DataSource.set -> void
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.DataSourceServiceKey.get -> object?
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.DataSourceServiceKey.set -> void
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.DeadLetterRetention.get -> System.TimeSpan
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.DeadLetterRetention.set -> void
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.Engine.get -> string?
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.Engine.set -> void
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.EvictionBatchSize.get -> int
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.EvictionBatchSize.set -> void
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.EvictionInterval.get -> System.TimeSpan
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.EvictionInterval.set -> void
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.ExpiryTimeout.get -> System.TimeSpan
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.ExpiryTimeout.set -> void
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.MaxAttempts.get -> int
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.MaxAttempts.set -> void
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.ScarletAdoNetStreamOptions() -> void
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.SchemaMode.get -> Scarlet.Orleans.Streaming.AdoNet.SchemaMode
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.SchemaMode.set -> void
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.VisibilityTimeout.get -> System.TimeSpan
+Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions.VisibilityTimeout.set -> void
+Scarlet.Orleans.Streaming.AdoNet.SchemaMode
+Scarlet.Orleans.Streaming.AdoNet.SchemaMode.Apply = 2 -> Scarlet.Orleans.Streaming.AdoNet.SchemaMode
+Scarlet.Orleans.Streaming.AdoNet.SchemaMode.None = 0 -> Scarlet.Orleans.Streaming.AdoNet.SchemaMode
+Scarlet.Orleans.Streaming.AdoNet.SchemaMode.Validate = 1 -> Scarlet.Orleans.Streaming.AdoNet.SchemaMode
+static Orleans.Hosting.ScarletAdoNetStreamExtensions.AddScarletAdoNetStreams(this Orleans.Hosting.IClientBuilder! builder, string! name, System.Action<Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions!>? configure = null, System.Action<Orleans.Hosting.IClusterClientPersistentStreamConfigurator!>? configureStreams = null) -> Orleans.Hosting.IClientBuilder!
+static Orleans.Hosting.ScarletAdoNetStreamExtensions.AddScarletAdoNetStreams(this Orleans.Hosting.ISiloBuilder! builder, string! name, System.Action<Scarlet.Orleans.Streaming.AdoNet.ScarletAdoNetStreamOptions!>? configure = null, System.Action<Orleans.Hosting.ISiloPersistentStreamConfigurator!>? configureStreams = null) -> Orleans.Hosting.ISiloBuilder!

@@ -1,0 +1,4 @@
+[src/**/*.cs]
+dotnet_diagnostic.RS0016.severity = warning
+dotnet_diagnostic.RS0017.severity = warning
+dotnet_diagnostic.RS0048.severity = warning

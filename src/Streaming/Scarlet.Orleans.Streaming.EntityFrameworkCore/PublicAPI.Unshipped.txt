@@ -1,0 +1,4 @@
+#nullable enable
+Microsoft.EntityFrameworkCore.ScarletStreamingModelBuilderExtensions
+static Microsoft.EntityFrameworkCore.ScarletStreamingModelBuilderExtensions.ApplyOrleansStreamingModel(this Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder) -> Microsoft.EntityFrameworkCore.ModelBuilder!
+static Microsoft.EntityFrameworkCore.ScarletStreamingModelBuilderExtensions.ApplyOrleansStreamingSchema(this Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder! migrationBuilder, int version) -> Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder!

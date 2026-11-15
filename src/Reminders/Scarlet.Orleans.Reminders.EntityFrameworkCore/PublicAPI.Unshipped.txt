@@ -1,0 +1,16 @@
+#nullable enable
+Microsoft.EntityFrameworkCore.ScarletRemindersModelBuilderExtensions
+Orleans.Hosting.ScarletEntityFrameworkCoreReminderExtensions
+Scarlet.Orleans.Reminders.EntityFrameworkCore.ScarletEntityFrameworkCoreReminderTableOptions
+Scarlet.Orleans.Reminders.EntityFrameworkCore.ScarletEntityFrameworkCoreReminderTableOptions.IsDuplicateKeyError.get -> System.Func<System.Data.Common.DbException!, bool>?
+Scarlet.Orleans.Reminders.EntityFrameworkCore.ScarletEntityFrameworkCoreReminderTableOptions.IsDuplicateKeyError.set -> void
+Scarlet.Orleans.Reminders.EntityFrameworkCore.ScarletEntityFrameworkCoreReminderTableOptions.ScarletEntityFrameworkCoreReminderTableOptions() -> void
+Scarlet.Orleans.Reminders.EntityFrameworkCore.ScarletEntityFrameworkCoreReminderTableOptions.SchemaMode.get -> Scarlet.Orleans.Reminders.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.Reminders.EntityFrameworkCore.ScarletEntityFrameworkCoreReminderTableOptions.SchemaMode.set -> void
+Scarlet.Orleans.Reminders.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.Reminders.EntityFrameworkCore.SchemaMode.None = 0 -> Scarlet.Orleans.Reminders.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.Reminders.EntityFrameworkCore.SchemaMode.Validate = 1 -> Scarlet.Orleans.Reminders.EntityFrameworkCore.SchemaMode
+static Microsoft.EntityFrameworkCore.ScarletRemindersModelBuilderExtensions.ApplyOrleansRemindersModel(this Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder) -> Microsoft.EntityFrameworkCore.ModelBuilder!
+static Microsoft.EntityFrameworkCore.ScarletRemindersModelBuilderExtensions.ApplyOrleansRemindersSchema(this Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder! migrationBuilder, int version) -> Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder!
+static Orleans.Hosting.ScarletEntityFrameworkCoreReminderExtensions.UseScarletEntityFrameworkCoreReminderService<TContext>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Scarlet.Orleans.Reminders.EntityFrameworkCore.ScarletEntityFrameworkCoreReminderTableOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Orleans.Hosting.ScarletEntityFrameworkCoreReminderExtensions.UseScarletEntityFrameworkCoreReminderService<TContext>(this Orleans.Hosting.ISiloBuilder! builder, System.Action<Scarlet.Orleans.Reminders.EntityFrameworkCore.ScarletEntityFrameworkCoreReminderTableOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!

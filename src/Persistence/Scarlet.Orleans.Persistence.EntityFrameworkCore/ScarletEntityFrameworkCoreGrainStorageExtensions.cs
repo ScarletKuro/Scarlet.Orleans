@@ -15,6 +15,7 @@ namespace Orleans.Hosting;
 /// <summary>
 /// Registers EF Core grain storage.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026", Justification = "Registration overloads target distinct Orleans builder and DI receiver types; their optional configure arguments do not compete for the same receiver.")]
 public static class ScarletEntityFrameworkCoreGrainStorageExtensions
 {
     /// <summary>

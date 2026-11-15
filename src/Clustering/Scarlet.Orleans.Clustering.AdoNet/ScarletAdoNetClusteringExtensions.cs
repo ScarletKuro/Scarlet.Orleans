@@ -13,6 +13,7 @@ namespace Orleans.Hosting;
 /// <summary>
 /// Registers ADO.NET clustering on silos and clients.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026", Justification = "Registration overloads target distinct Orleans builder and DI receiver types; their optional configure arguments do not compete for the same receiver.")]
 public static class ScarletAdoNetClusteringExtensions
 {
     /// <summary>

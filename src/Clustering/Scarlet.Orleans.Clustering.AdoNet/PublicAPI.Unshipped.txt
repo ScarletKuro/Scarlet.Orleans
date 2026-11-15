@@ -1,0 +1,18 @@
+#nullable enable
+Orleans.Hosting.ScarletAdoNetClusteringExtensions
+Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions
+Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions.DataSource.get -> System.Data.Common.DbDataSource?
+Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions.DataSource.set -> void
+Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions.DataSourceServiceKey.get -> object?
+Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions.DataSourceServiceKey.set -> void
+Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions.Engine.get -> string?
+Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions.Engine.set -> void
+Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions.ScarletAdoNetClusteringOptions() -> void
+Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions.SchemaMode.get -> Scarlet.Orleans.Clustering.AdoNet.SchemaMode
+Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions.SchemaMode.set -> void
+Scarlet.Orleans.Clustering.AdoNet.SchemaMode
+Scarlet.Orleans.Clustering.AdoNet.SchemaMode.Apply = 2 -> Scarlet.Orleans.Clustering.AdoNet.SchemaMode
+Scarlet.Orleans.Clustering.AdoNet.SchemaMode.None = 0 -> Scarlet.Orleans.Clustering.AdoNet.SchemaMode
+Scarlet.Orleans.Clustering.AdoNet.SchemaMode.Validate = 1 -> Scarlet.Orleans.Clustering.AdoNet.SchemaMode
+static Orleans.Hosting.ScarletAdoNetClusteringExtensions.UseScarletAdoNetClustering(this Orleans.Hosting.IClientBuilder! builder, System.Action<Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions!>? configure = null) -> Orleans.Hosting.IClientBuilder!
+static Orleans.Hosting.ScarletAdoNetClusteringExtensions.UseScarletAdoNetClustering(this Orleans.Hosting.ISiloBuilder! builder, System.Action<Scarlet.Orleans.Clustering.AdoNet.ScarletAdoNetClusteringOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!

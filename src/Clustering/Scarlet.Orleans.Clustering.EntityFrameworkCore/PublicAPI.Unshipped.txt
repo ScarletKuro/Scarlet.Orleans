@@ -1,0 +1,16 @@
+#nullable enable
+Microsoft.EntityFrameworkCore.ScarletClusteringModelBuilderExtensions
+Orleans.Hosting.ScarletEntityFrameworkCoreClusteringExtensions
+Scarlet.Orleans.Clustering.EntityFrameworkCore.ScarletEntityFrameworkCoreClusteringOptions
+Scarlet.Orleans.Clustering.EntityFrameworkCore.ScarletEntityFrameworkCoreClusteringOptions.IsDuplicateKeyError.get -> System.Func<System.Data.Common.DbException!, bool>?
+Scarlet.Orleans.Clustering.EntityFrameworkCore.ScarletEntityFrameworkCoreClusteringOptions.IsDuplicateKeyError.set -> void
+Scarlet.Orleans.Clustering.EntityFrameworkCore.ScarletEntityFrameworkCoreClusteringOptions.ScarletEntityFrameworkCoreClusteringOptions() -> void
+Scarlet.Orleans.Clustering.EntityFrameworkCore.ScarletEntityFrameworkCoreClusteringOptions.SchemaMode.get -> Scarlet.Orleans.Clustering.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.Clustering.EntityFrameworkCore.ScarletEntityFrameworkCoreClusteringOptions.SchemaMode.set -> void
+Scarlet.Orleans.Clustering.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.Clustering.EntityFrameworkCore.SchemaMode.None = 0 -> Scarlet.Orleans.Clustering.EntityFrameworkCore.SchemaMode
+Scarlet.Orleans.Clustering.EntityFrameworkCore.SchemaMode.Validate = 1 -> Scarlet.Orleans.Clustering.EntityFrameworkCore.SchemaMode
+static Microsoft.EntityFrameworkCore.ScarletClusteringModelBuilderExtensions.ApplyOrleansClusteringModel(this Microsoft.EntityFrameworkCore.ModelBuilder! modelBuilder) -> Microsoft.EntityFrameworkCore.ModelBuilder!
+static Microsoft.EntityFrameworkCore.ScarletClusteringModelBuilderExtensions.ApplyOrleansClusteringSchema(this Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder! migrationBuilder, int version) -> Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder!
+static Orleans.Hosting.ScarletEntityFrameworkCoreClusteringExtensions.UseScarletEntityFrameworkCoreClustering<TContext>(this Orleans.Hosting.IClientBuilder! builder, System.Action<Scarlet.Orleans.Clustering.EntityFrameworkCore.ScarletEntityFrameworkCoreClusteringOptions!>? configure = null) -> Orleans.Hosting.IClientBuilder!
+static Orleans.Hosting.ScarletEntityFrameworkCoreClusteringExtensions.UseScarletEntityFrameworkCoreClustering<TContext>(this Orleans.Hosting.ISiloBuilder! builder, System.Action<Scarlet.Orleans.Clustering.EntityFrameworkCore.ScarletEntityFrameworkCoreClusteringOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!

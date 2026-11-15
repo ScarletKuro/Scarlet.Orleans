@@ -1,0 +1,22 @@
+#nullable enable
+Orleans.Hosting.ScarletAdoNetTransactionalStateStorageExtensions
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.DataSource.get -> System.Data.Common.DbDataSource?
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.DataSource.set -> void
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.DataSourceServiceKey.get -> object?
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.DataSourceServiceKey.set -> void
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.Engine.get -> string?
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.Engine.set -> void
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.GrainStorageSerializer.get -> Orleans.Storage.IGrainStorageSerializer!
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.GrainStorageSerializer.set -> void
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.InitStage.get -> int
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.InitStage.set -> void
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.ScarletAdoNetTransactionalStateStorageOptions() -> void
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.SchemaMode.get -> Scarlet.Orleans.Transactions.AdoNet.SchemaMode
+Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions.SchemaMode.set -> void
+Scarlet.Orleans.Transactions.AdoNet.SchemaMode
+Scarlet.Orleans.Transactions.AdoNet.SchemaMode.Apply = 2 -> Scarlet.Orleans.Transactions.AdoNet.SchemaMode
+Scarlet.Orleans.Transactions.AdoNet.SchemaMode.None = 0 -> Scarlet.Orleans.Transactions.AdoNet.SchemaMode
+Scarlet.Orleans.Transactions.AdoNet.SchemaMode.Validate = 1 -> Scarlet.Orleans.Transactions.AdoNet.SchemaMode
+static Orleans.Hosting.ScarletAdoNetTransactionalStateStorageExtensions.AddScarletAdoNetTransactionalStateStorage(this Orleans.Hosting.ISiloBuilder! builder, string! name, System.Action<Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!
+static Orleans.Hosting.ScarletAdoNetTransactionalStateStorageExtensions.AddScarletAdoNetTransactionalStateStorageAsDefault(this Orleans.Hosting.ISiloBuilder! builder, System.Action<Scarlet.Orleans.Transactions.AdoNet.ScarletAdoNetTransactionalStateStorageOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!

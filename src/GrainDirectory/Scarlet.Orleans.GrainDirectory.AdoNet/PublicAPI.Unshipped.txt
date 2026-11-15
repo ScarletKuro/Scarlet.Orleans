@@ -1,0 +1,21 @@
+#nullable enable
+Orleans.Hosting.ScarletAdoNetGrainDirectoryExtensions
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.DataSource.get -> System.Data.Common.DbDataSource?
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.DataSource.set -> void
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.DataSourceServiceKey.get -> object?
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.DataSourceServiceKey.set -> void
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.Engine.get -> string?
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.Engine.set -> void
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.InitStage.get -> int
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.InitStage.set -> void
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.ScarletAdoNetGrainDirectoryOptions() -> void
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.SchemaMode.get -> Scarlet.Orleans.GrainDirectory.AdoNet.SchemaMode
+Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions.SchemaMode.set -> void
+Scarlet.Orleans.GrainDirectory.AdoNet.SchemaMode
+Scarlet.Orleans.GrainDirectory.AdoNet.SchemaMode.Apply = 2 -> Scarlet.Orleans.GrainDirectory.AdoNet.SchemaMode
+Scarlet.Orleans.GrainDirectory.AdoNet.SchemaMode.None = 0 -> Scarlet.Orleans.GrainDirectory.AdoNet.SchemaMode
+Scarlet.Orleans.GrainDirectory.AdoNet.SchemaMode.Validate = 1 -> Scarlet.Orleans.GrainDirectory.AdoNet.SchemaMode
+static Orleans.Hosting.ScarletAdoNetGrainDirectoryExtensions.AddScarletAdoNetGrainDirectory(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Orleans.Hosting.ScarletAdoNetGrainDirectoryExtensions.AddScarletAdoNetGrainDirectory(this Orleans.Hosting.ISiloBuilder! builder, string! name, System.Action<Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!
+static Orleans.Hosting.ScarletAdoNetGrainDirectoryExtensions.UseScarletAdoNetGrainDirectoryAsDefault(this Orleans.Hosting.ISiloBuilder! builder, System.Action<Scarlet.Orleans.GrainDirectory.AdoNet.ScarletAdoNetGrainDirectoryOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!

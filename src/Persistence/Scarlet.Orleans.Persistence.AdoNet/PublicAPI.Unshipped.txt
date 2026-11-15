@@ -1,0 +1,27 @@
+#nullable enable
+Orleans.Hosting.ScarletAdoNetGrainStorageExtensions
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.DataSource.get -> System.Data.Common.DbDataSource?
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.DataSource.set -> void
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.DataSourceServiceKey.get -> object?
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.DataSourceServiceKey.set -> void
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.DeleteStateOnClear.get -> bool
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.DeleteStateOnClear.set -> void
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.Engine.get -> string?
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.Engine.set -> void
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.GrainStorageSerializer.get -> Orleans.Storage.IGrainStorageSerializer!
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.GrainStorageSerializer.set -> void
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.InitStage.get -> int
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.InitStage.set -> void
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.MaxPayloadSize.get -> int?
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.MaxPayloadSize.set -> void
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.ScarletAdoNetGrainStorageOptions() -> void
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.SchemaMode.get -> Scarlet.Orleans.Persistence.AdoNet.SchemaMode
+Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions.SchemaMode.set -> void
+Scarlet.Orleans.Persistence.AdoNet.SchemaMode
+Scarlet.Orleans.Persistence.AdoNet.SchemaMode.Apply = 2 -> Scarlet.Orleans.Persistence.AdoNet.SchemaMode
+Scarlet.Orleans.Persistence.AdoNet.SchemaMode.None = 0 -> Scarlet.Orleans.Persistence.AdoNet.SchemaMode
+Scarlet.Orleans.Persistence.AdoNet.SchemaMode.Validate = 1 -> Scarlet.Orleans.Persistence.AdoNet.SchemaMode
+static Orleans.Hosting.ScarletAdoNetGrainStorageExtensions.AddScarletAdoNetGrainStorage(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Orleans.Hosting.ScarletAdoNetGrainStorageExtensions.AddScarletAdoNetGrainStorage(this Orleans.Hosting.ISiloBuilder! builder, string! name, System.Action<Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!
+static Orleans.Hosting.ScarletAdoNetGrainStorageExtensions.AddScarletAdoNetGrainStorageAsDefault(this Orleans.Hosting.ISiloBuilder! builder, System.Action<Scarlet.Orleans.Persistence.AdoNet.ScarletAdoNetGrainStorageOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!

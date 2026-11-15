@@ -1,0 +1,18 @@
+#nullable enable
+Orleans.Hosting.ScarletAdoNetReminderExtensions
+Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions
+Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions.DataSource.get -> System.Data.Common.DbDataSource?
+Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions.DataSource.set -> void
+Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions.DataSourceServiceKey.get -> object?
+Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions.DataSourceServiceKey.set -> void
+Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions.Engine.get -> string?
+Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions.Engine.set -> void
+Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions.ScarletAdoNetReminderTableOptions() -> void
+Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions.SchemaMode.get -> Scarlet.Orleans.Reminders.AdoNet.SchemaMode
+Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions.SchemaMode.set -> void
+Scarlet.Orleans.Reminders.AdoNet.SchemaMode
+Scarlet.Orleans.Reminders.AdoNet.SchemaMode.Apply = 2 -> Scarlet.Orleans.Reminders.AdoNet.SchemaMode
+Scarlet.Orleans.Reminders.AdoNet.SchemaMode.None = 0 -> Scarlet.Orleans.Reminders.AdoNet.SchemaMode
+Scarlet.Orleans.Reminders.AdoNet.SchemaMode.Validate = 1 -> Scarlet.Orleans.Reminders.AdoNet.SchemaMode
+static Orleans.Hosting.ScarletAdoNetReminderExtensions.UseScarletAdoNetReminderService(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Orleans.Hosting.ScarletAdoNetReminderExtensions.UseScarletAdoNetReminderService(this Orleans.Hosting.ISiloBuilder! builder, System.Action<Scarlet.Orleans.Reminders.AdoNet.ScarletAdoNetReminderTableOptions!>? configure = null) -> Orleans.Hosting.ISiloBuilder!

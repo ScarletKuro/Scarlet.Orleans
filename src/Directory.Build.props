@@ -7,6 +7,7 @@
     <SharedSourceRoot>$(MSBuildThisFileDirectory)Shared/</SharedSourceRoot>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
     <!-- Cross-cutting infrastructure is compiled into every package rather than shipped as a shared package,
          so it stays internal and packages never depend on each other (design section 3.1). Only code that every
          component needs belongs in src/Shared; code for one component lives in that component's Shared folder.
