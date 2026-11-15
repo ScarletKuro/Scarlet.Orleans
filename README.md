@@ -132,6 +132,11 @@ The EF Core flavour also accepts any other relational provider, on a best-effort
 recognised by their standard SQLSTATE `23505`, or by your own `IsDuplicateKeyError` rule; otherwise the provider checks
 for the conflicting row after a failed insert.
 
+**Other ADO.NET drivers.** The ADO.NET flavour infers the engine from the drivers above. For any other driver, or a
+connection wrapped in your own type, set the `Engine` option. That selects the SQL dialect, not driver compatibility:
+retries and conflicts depend on recognising the driver's errors for deadlocks and duplicate keys, so check those with
+your driver before relying on it.
+
 **NativeAOT.** The ADO.NET flavour is trimming- and AOT-compatible, and its test suites run as NativeAOT executables
 against every engine in CI. An Orleans 10.4 silo itself cannot start under NativeAOT yet, so this guarantee matters once
 Orleans supports it. MySql.Data relies on reflection and works under JIT only; use MySqlConnector for AOT.

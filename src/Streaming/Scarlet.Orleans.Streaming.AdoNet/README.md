@@ -24,9 +24,10 @@ builder.UseOrleans(silo => silo
 ```
 
 Instead of `options.DataSource`, the provider resolves a `DbDataSource` from dependency injection, keyed by
-`options.DataSourceServiceKey` if set. The engine is inferred from the driver; set `options.Engine = "MariaDb"` for
-MariaDB. The last argument configures Orleans' side of the provider, such as its cache size, its pulling agents and its
-queue count (`HashRingStreamQueueMapperOptions`, 8 by default), which must match on silos and clients.
+`options.DataSourceServiceKey` if set. The engine is inferred from the driver; MariaDB runs
+the MySQL SQL, so it needs no setting, and for a driver the provider does not recognise, set `options.Engine`. The last
+argument configures Orleans' side of the provider, such as its cache size, its pulling agents and its queue count
+(`HashRingStreamQueueMapperOptions`, 8 by default), which must match on silos and clients.
 
 ## Options
 

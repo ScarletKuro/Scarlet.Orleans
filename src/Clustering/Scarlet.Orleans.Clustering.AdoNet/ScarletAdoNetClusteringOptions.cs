@@ -25,7 +25,8 @@ public sealed class ScarletAdoNetClusteringOptions
 
     /// <summary>
     /// The database engine: <c>SqlServer</c>, <c>PostgreSql</c>, <c>MySql</c>, <c>MariaDb</c> or <c>Sqlite</c>.
-    /// When <see langword="null"/>, it is inferred from the driver; MariaDB must be set explicitly.
+    /// When <see langword="null"/>, it is inferred from the driver; a MariaDB server is inferred as <c>MySql</c>, whose SQL it
+    /// runs, and <c>MariaDb</c> currently behaves the same.
     /// </summary>
     public string? Engine { get; set; }
 

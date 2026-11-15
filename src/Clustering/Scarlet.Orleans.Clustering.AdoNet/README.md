@@ -33,8 +33,9 @@ builder.UseOrleansClient(client => client
 
 Silos and clients of one cluster share `ClusterOptions.ClusterId`; several clusters can share the tables. Instead of
 `options.DataSource`, the provider resolves a `DbDataSource` from dependency injection, keyed by
-`options.DataSourceServiceKey` if set. The engine is inferred from the driver; set `options.Engine = "MariaDb"` for
-MariaDB, which shares MySqlConnector with MySQL.
+`options.DataSourceServiceKey` if set. The engine is inferred from the driver; MariaDB runs
+the MySQL SQL, so it needs no setting. For a driver the provider does not recognise, set `options.Engine`, and check
+that its errors are classified (see the repository README).
 
 Oracle's MySql.Data has known bugs: concurrent TLS connection opens can corrupt its state, after which every open in
 the process fails, and after a failover some calls can hang on dead connections. Prefer MySqlConnector; see the

@@ -18,7 +18,8 @@ public sealed class ScarletAdoNetStreamOptions
 
     /// <summary>
     /// The engine: <c>SqlServer</c>, <c>PostgreSql</c>, <c>MySql</c>, <c>MariaDb</c> or <c>Sqlite</c>. Inferred from the
-    /// driver if not set; MariaDB, which shares its driver with MySQL, must be set.
+    /// driver if not set; a MariaDB server is inferred as <c>MySql</c>, whose SQL it runs, and <c>MariaDb</c> currently
+    /// behaves the same.
     /// </summary>
     public string? Engine { get; set; }
 

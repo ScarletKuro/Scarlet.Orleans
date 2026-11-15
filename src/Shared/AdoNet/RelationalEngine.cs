@@ -6,8 +6,8 @@ namespace Scarlet.Orleans.Relational;
 /// The database engines that have a dialect.
 /// </summary>
 /// <remarks>
-/// MariaDB is distinct from MySQL because the two diverge in locking reads and temporary-table rules,
-/// even where a component's SQL happens to be identical for both.
+/// MariaDB has its own name so that an application can state it, and so that SQL can diverge from MySQL's if a
+/// MariaDB difference ever needs it; today every component runs the same SQL and scripts for both.
 /// </remarks>
 internal enum RelationalEngine
 {
@@ -37,7 +37,7 @@ internal static class RelationalEngines
     /// Infers the engine from the driver's connection type, by name, so no driver is referenced.
     /// </summary>
     /// <remarks>
-    /// MySqlConnector serves both MySQL and MariaDB, so its connections map to MySQL; MariaDB users set the engine explicitly.
+    /// MySqlConnector serves both MySQL and MariaDB, so its connections map to MySQL, which is also correct for MariaDB.
     /// Oracle's MySql.Data is supported as well; it populates <see cref="DbException.SqlState"/> like MySqlConnector.
     /// </remarks>
     public static RelationalEngine FromConnection(DbConnection connection) => connection.GetType().FullName switch
