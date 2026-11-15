@@ -273,7 +273,7 @@ public static class DatabaseDiagnostics
 
     public static void Record(string operation, string engine, string database, string details = "")
     {
-        var test = TestContext.Current.Test?.TestDisplayName ?? "fixture";
+        var test = TestContext.Current.Test?.TestDisplayName ?? TestContext.Current.TestClass?.TestClassName ?? "fixture";
         var line = $"{DateTimeOffset.UtcNow:O}\t{operation}\t{engine}\t{database}\t{test}\t{details.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal)}{Environment.NewLine}";
         try
         {

@@ -79,14 +79,14 @@ internal static class StreamingSql
     {
         RelationalEngine.PostgreSql =>
             $"UPDATE {Messages} m SET dequeued = m.dequeued + 1, visible_on = @visible_on " +
-            $"FROM (SELECT message_id FROM {Messages} WHERE {Dequeueable} ORDER BY message_id LIMIT @max_count FOR UPDATE SKIP LOCKED) s " +
+            $"FROM (SELECT message_id FROM {Messages} WHERE {Dequeueable} ORDER BY message_id LIMIT @max_count FOR UPDATE) s " +
             $"WHERE m.queue_hash = @queue_hash AND m.message_id = s.message_id RETURNING m.message_id, m.message_key, m.dequeued, m.expires_on, m.payload",
 
-        // READPAST is valid only at READ COMMITTED or REPEATABLE READ, and under READ_COMMITTED_SNAPSHOT only with
-        // READCOMMITTEDLOCK, so the session's level is set and the hint added; with RCSI off, the hint is the default.
+        // Wait for an older locked message instead of overtaking it. Read through the queue's index so locks in other
+        // queues do not stall this reader. READCOMMITTEDLOCK preserves this behavior when RCSI is enabled.
         RelationalEngine.SqlServer =>
             "SET TRANSACTION ISOLATION LEVEL READ COMMITTED; " +
-            $"WITH batch AS (SELECT TOP (@max_count) * FROM {Messages} WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK) WHERE {Dequeueable} ORDER BY message_id) " +
+            $"WITH batch AS (SELECT TOP (@max_count) * FROM {Messages} WITH (UPDLOCK, READCOMMITTEDLOCK, INDEX(ix_orleans_stream_message_queue)) WHERE {Dequeueable} ORDER BY message_id) " +
             $"UPDATE batch SET dequeued = dequeued + 1, visible_on = @visible_on OUTPUT inserted.message_id, inserted.message_key, inserted.dequeued, inserted.expires_on, inserted.payload",
 
         // A single writer, so there is nothing to skip.

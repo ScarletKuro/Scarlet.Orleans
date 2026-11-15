@@ -30,7 +30,7 @@ public abstract class StreamingClusterTests(StreamingClusterFixture fixture)
         }
 
         await DeliveryLog.WaitForAsync(stream, items, Delivery, CancellationToken);
-        Assert.Equal(items, DeliveryLog.Of(stream));
+        DeliveryLog.AssertInOrder(stream, items);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public abstract class StreamingClusterTests(StreamingClusterFixture fixture)
         foreach (var stream in streams)
         {
             await DeliveryLog.WaitForAsync(stream, items, Delivery, CancellationToken);
-            Assert.Equal(items, DeliveryLog.Of(stream));
+            DeliveryLog.AssertInOrder(stream, items);
         }
     }
 
@@ -58,7 +58,7 @@ public abstract class StreamingClusterTests(StreamingClusterFixture fixture)
         await fixture.Cluster.Client.GetGrain<IProducerGrain>(Guid.NewGuid()).Produce(StreamNamespaces.Explicit, stream, items);
 
         await DeliveryLog.WaitForAsync(stream, items, Delivery, CancellationToken);
-        Assert.Equal(items, DeliveryLog.Of(stream));
+        DeliveryLog.AssertInOrder(stream, items);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public abstract class StreamingClusterTests(StreamingClusterFixture fixture)
         await fixture.Cluster.Client.GetGrain<IProducerGrain>(Guid.NewGuid()).ProduceBatch(StreamNamespaces.Implicit, stream, items);
 
         await DeliveryLog.WaitForAsync(stream, items, Delivery, CancellationToken);
-        Assert.Equal(items, DeliveryLog.Of(stream));
+        DeliveryLog.AssertInOrder(stream, items);
     }
 
     [Fact]
@@ -79,16 +79,16 @@ public abstract class StreamingClusterTests(StreamingClusterFixture fixture)
         var stream = Guid.NewGuid();
         int[] items = [.. Enumerable.Range(0, 20)];
         var subscription = await fixture.Cluster.Client.GetStreamProvider(StreamNamespaces.Provider).GetStream<int>(StreamId.Create(StreamNamespaces.Explicit, stream))
-            .SubscribeAsync((item, _) =>
+            .SubscribeAsync((item, token) =>
             {
-                DeliveryLog.Record(stream, item);
+                DeliveryLog.Record(stream, item, token, "client");
                 return Task.CompletedTask;
             });
 
         await fixture.Cluster.Client.GetGrain<IProducerGrain>(Guid.NewGuid()).Produce(StreamNamespaces.Explicit, stream, items);
 
         await DeliveryLog.WaitForAsync(stream, items, Delivery, CancellationToken);
-        Assert.Equal(items, DeliveryLog.Of(stream));
+        DeliveryLog.AssertInOrder(stream, items);
         await subscription.UnsubscribeAsync();
     }
 
@@ -108,7 +108,7 @@ public abstract class StreamingClusterTests(StreamingClusterFixture fixture)
         foreach (var consumer in consumers)
         {
             await DeliveryLog.WaitForAsync(consumer, items, Delivery, CancellationToken);
-            Assert.Equal(items, DeliveryLog.Of(consumer));
+            DeliveryLog.AssertInOrder(consumer, items);
         }
     }
 

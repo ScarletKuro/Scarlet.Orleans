@@ -6,7 +6,8 @@ namespace Scarlet.Orleans.Streaming.AdoNet;
 
 /// <summary>
 /// MySQL and MariaDB dequeue in two commands: the first starts a read-committed transaction and locks the batch with a
-/// skip-locked read, and the second updates those rows by ID, reads them back and commits.
+/// locking read, and the second updates those rows by ID, reads them back and commits. A locked older message is
+/// waited for rather than skipped, so a later message cannot overtake it between batches.
 /// </summary>
 /// <remarks>
 /// MySQL rejects an update whose subquery reads the target table, and <c>LIMIT</c> in an <c>IN</c> subquery, and has no
@@ -21,7 +22,7 @@ internal static class MySqlStreamingBatch
     public const string Lock =
         "SET TRANSACTION ISOLATION LEVEL READ COMMITTED; START TRANSACTION; " +
         $"SELECT message_id FROM {Messages} WHERE queue_hash = @queue_hash AND visible_on <= @now AND expires_on > @now AND dequeued < @max_attempts " +
-        "ORDER BY message_id LIMIT @max_count FOR UPDATE SKIP LOCKED";
+        "ORDER BY message_id LIMIT @max_count FOR UPDATE";
 
     public static DbCommand CreateUpdate(DbConnection connection, StreamQueueKey queue, IReadOnlyList<long> ids, DateTimeOffset visibleOn)
     {

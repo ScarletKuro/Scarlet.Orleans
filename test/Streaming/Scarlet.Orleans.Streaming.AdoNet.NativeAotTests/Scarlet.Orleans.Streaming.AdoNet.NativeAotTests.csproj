@@ -20,6 +20,7 @@
 
     <Compile Include="..\Shared\StreamingSchemaManagementTests.cs" LinkBase="Shared" />
     <Compile Include="..\Shared\StreamQueueStoreTests.cs" LinkBase="Shared" />
+    <Compile Include="..\Shared\DequeueOrderingTests.cs" LinkBase="Shared" />
     <Compile Include="..\..\Shared\TestDatabase.cs" LinkBase="TestShared" />
     <Compile Include="..\..\Shared\TestSchemaMode.cs" LinkBase="TestShared" />
     <Compile Include="..\Scarlet.Orleans.Streaming.AdoNet.Tests\FlavourStreaming.cs" LinkBase="AdoNet" />

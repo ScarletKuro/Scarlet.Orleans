@@ -1,5 +1,15 @@
 namespace Scarlet.Orleans.Streaming.Tests;
 
+public sealed class PostgreSqlDequeueOrderingTests(PostgreSqlDatabaseFixture fixture) : DequeueOrderingTests(fixture), IClassFixture<PostgreSqlDatabaseFixture>;
+
+public sealed class SqlServerDequeueOrderingTests(SqlServerDatabaseFixture fixture) : DequeueOrderingTests(fixture), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class SqlServerSnapshotDequeueOrderingTests(SqlServerDatabaseFixture fixture) : DequeueOrderingTests(fixture, snapshot: true), IClassFixture<SqlServerDatabaseFixture>;
+
+public sealed class MySqlDequeueOrderingTests(MySqlDatabaseFixture fixture) : DequeueOrderingTests(fixture), IClassFixture<MySqlDatabaseFixture>;
+
+public sealed class MariaDbDequeueOrderingTests(MariaDbDatabaseFixture fixture) : DequeueOrderingTests(fixture), IClassFixture<MariaDbDatabaseFixture>;
+
 public sealed class SqliteStreamQueueStoreTests(SqliteDatabaseFixture fixture) : StreamQueueStoreTests(fixture), IClassFixture<SqliteDatabaseFixture>;
 
 public sealed class SqliteStreamingSchemaManagementTests(SqliteDatabaseFixture fixture) : StreamingSchemaManagementTests(fixture), IClassFixture<SqliteDatabaseFixture>;
