@@ -52,35 +52,50 @@ public abstract class DequeueOrderingTests(DatabaseFixture fixture, bool snapsho
         };
         var blocker = Convert.ToInt32(await block.ExecuteScalarAsync(ct), System.Globalization.CultureInfo.InvariantCulture);
 
+        await using var waiting = database.DataSource.CreateCommand(database.Engine switch
+        {
+            "SqlServer" => "SELECT COUNT(*) FROM sys.dm_exec_requests WHERE database_id = DB_ID() AND blocking_session_id = @blocker",
+            "PostgreSql" => "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND @blocker = ANY(pg_blocking_pids(pid))",
+            "MySql" => "SELECT COUNT(*) FROM performance_schema.data_lock_waits w JOIN information_schema.INNODB_TRX t ON t.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID WHERE t.trx_mysql_thread_id = @blocker",
+            _ => "SELECT COUNT(*) FROM information_schema.INNODB_LOCK_WAITS w JOIN information_schema.INNODB_TRX t ON t.trx_id = w.blocking_trx_id WHERE t.trx_mysql_thread_id = @blocker",
+        });
+        waiting.AddParameter("blocker", blocker, DbType.Int32);
+        // Prime the metadata cache before the waiter exists. Detection must work even with a cached empty snapshot.
+        await waiting.ExecuteScalarAsync(ct);
+
         var dequeue = store.DequeueAsync(sameQueue ? queue : other, 3, 5, now, now.AddMinutes(1), ct);
         var waited = false;
+        var observationTimedOut = false;
+        // InnoDB's transaction/lock metadata cache needs >100 ms without reads to refresh. Faster polling can keep
+        // returning the same empty snapshot forever (MariaDB's innodb_i_s_innodb_locks.test documents this).
+        var pollInterval = database.Engine is "MySql" or "MariaDb" ? 200 : 20;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
             // The old skip-locked read completes while the lock is held. A FIFO read waits for this transaction.
             // Observe the database's lock graph so neither test result depends on how quickly the task is scheduled.
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            deadline.CancelAfter(TimeSpan.FromSeconds(30));
             while (!dequeue.IsCompleted)
             {
-                await using var waiting = database.DataSource.CreateCommand(database.Engine switch
-                {
-                    "SqlServer" => "SELECT COUNT(*) FROM sys.dm_exec_requests WHERE database_id = DB_ID() AND blocking_session_id = @blocker",
-                    "PostgreSql" => "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND @blocker = ANY(pg_blocking_pids(pid))",
-                    "MySql" => "SELECT COUNT(*) FROM performance_schema.data_lock_waits w JOIN information_schema.INNODB_TRX t ON t.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID WHERE t.trx_mysql_thread_id = @blocker",
-                    _ => "SELECT COUNT(*) FROM information_schema.INNODB_LOCK_WAITS w JOIN information_schema.INNODB_TRX t ON t.trx_id = w.blocking_trx_id WHERE t.trx_mysql_thread_id = @blocker",
-                });
-                waiting.AddParameter("blocker", blocker, DbType.Int32);
                 if (Convert.ToInt32(await waiting.ExecuteScalarAsync(deadline.Token), System.Globalization.CultureInfo.InvariantCulture) > 0)
                 {
                     waited = true;
                     break;
                 }
-                await Task.Delay(20, deadline.Token);
+                await Task.Delay(pollInterval, deadline.Token);
             }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && deadline.IsCancellationRequested)
+        {
+            observationTimedOut = true;
         }
         finally { await held.RollbackAsync(CancellationToken.None); }
 
+        // Join the dequeue after releasing the lock, including when observation failed, before fixture cleanup.
         var batch = await dequeue;
+        Assert.False(observationTimedOut,
+            $"{database.Engine}: no dequeue completion or lock wait on session {blocker} observed within 30 seconds. " +
+            $"sameQueue={sameQueue}, database={database.Name}, pollInterval={pollInterval}ms. Check lock-metadata visibility.");
         Assert.Equal([0, 1, 2], batch.Select(m => BitConverter.ToInt32(m.Payload)));
         if (!sameQueue) Assert.False(waited, "A lock in another queue blocked this dequeue.");
     }
